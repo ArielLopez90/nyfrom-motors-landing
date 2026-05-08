@@ -13,3 +13,4 @@ Landing page estática para validar la propuesta de segunda opinión mecánica a
 
 - Cambiar el número de WhatsApp en `index.html`.
 - Definir si la primera revisión será gratis, pagada o cupo limitado.
+Deploy trigger
