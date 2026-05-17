@@ -248,6 +248,39 @@ h2 {
   gap: 18px;
 }
 
+.route-section {
+  padding-bottom: 26px;
+}
+
+.route-options {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+}
+
+.route-options article {
+  min-height: 230px;
+  padding: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(20, 24, 26, 0.94), rgba(11, 13, 14, 0.94));
+  box-shadow: var(--shadow);
+}
+
+.route-options p {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.expertise-note {
+  max-width: 780px;
+  margin: 22px 0 0;
+  color: var(--soft);
+  font-size: 1.08rem;
+  font-weight: 650;
+}
+
 .steps article {
   min-height: 260px;
   padding: 28px;
@@ -355,6 +388,7 @@ footer {
   }
 
   .trust-strip,
+  .route-options,
   .steps,
   .split-section {
     grid-template-columns: 1fr;
