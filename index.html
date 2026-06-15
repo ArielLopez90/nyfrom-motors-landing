@@ -3,152 +3,136 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Nyfrom Motors | Segunda opinión y asesoría mecánica</title>
+    <title>Nyfrom Motors | App base</title>
     <meta
       name="description"
-      content="Valida la cotización de tu mecánico antes de pagar y recibe guía sobre tu vehículo y posibles reparaciones."
+      content="Base inicial de la app Nyfrom Motors con login local y datos básicos."
     />
-    <meta property="og:title" content="Nyfrom Motors" />
-    <meta
-      property="og:description"
-      content="¿Tu mecánico te dio una cotización y no sabes si confiar? Te damos una segunda opinión y guía sobre posibles reparaciones."
-    />
-    <meta property="og:type" content="website" />
-    <meta property="og:image" content="/assets/nyfrom-hero-brand.png" />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script defer src="./app.js"></script>
   </head>
   <body>
-    <header class="site-header">
-      <a class="brand" href="/" aria-label="Nyfrom Motors inicio">
-        <img class="brand-logo" src="/assets/nyfrom-logo.jpg" alt="" />
-        <span>Nyfrom Motors</span>
-      </a>
-      <nav aria-label="Navegación principal">
-        <a href="#rutas">Asesoría</a>
-        <a href="#como-funciona">Cómo funciona</a>
-        <a href="#validamos">Qué revisamos</a>
-        <a class="nav-cta" href="https://wa.me/50259958761?text=Hola%20Nyfrom%20Motors%2C%20quiero%20asesor%C3%ADa%20sobre%20mi%20veh%C3%ADculo%20y%20posibles%20reparaciones.">WhatsApp</a>
-      </nav>
-    </header>
-
-    <main>
-      <section class="hero">
-        <div class="hero-media" aria-hidden="true">
-          <img src="/assets/nyfrom-hero-brand.png" alt="" />
-        </div>
-        <div class="hero-content">
-          <p class="eyebrow">Segunda opinión y asesoría mecánica</p>
-          <h1>Compra, repara y decide con más confianza.</h1>
-          <p class="hero-copy">
-            Te ayudamos si ya tienes una cotización o diagnóstico y quieres saber si vale la pena, o si tu vehículo
-            presenta un ruido, falla o síntoma y no sabes a qué taller acudir ni cuánto podría costar.
-          </p>
-          <div class="hero-actions">
-            <a class="primary-button" href="https://wa.me/50259958761?text=Hola%20Nyfrom%20Motors%2C%20quiero%20asesor%C3%ADa%20sobre%20mi%20veh%C3%ADculo%20y%20posibles%20reparaciones.">
-              Enviar consulta por WhatsApp
-            </a>
-            <span class="offer">Primera revisión gratis para los primeros 10 casos.</span>
+    <main class="app">
+      <section class="login-view" id="loginView" aria-labelledby="loginTitle">
+        <div class="brand-block">
+          <img class="brand-logo" src="./assets/nyfrom-logo.jpg" alt="" />
+          <div>
+            <p class="eyebrow">Nyfrom Motors</p>
+            <h1 id="loginTitle">Entrar a la app</h1>
           </div>
         </div>
+
+        <form class="panel login-panel" id="loginForm">
+          <label>
+            Correo o usuario
+            <input name="loginUser" type="text" autocomplete="username" placeholder="admin@nyfrom.com" required />
+          </label>
+
+          <label>
+            Contraseña
+            <input name="loginPassword" type="password" autocomplete="current-password" placeholder="1234" required />
+          </label>
+
+          <button class="primary-button" type="submit">Entrar</button>
+          <p class="helper-text">Por ahora el acceso es local para construir y entender la base de la app.</p>
+        </form>
       </section>
 
-      <section class="trust-strip" aria-label="Beneficios principales">
-        <div>
-          <strong>Menos duda</strong>
-          <span>Traducimos la cotización y las dudas de tu vehículo a lenguaje simple.</span>
-        </div>
-        <div>
-          <strong>Mejor decisión</strong>
-          <span>Te decimos qué preguntar antes de aprobar.</span>
-        </div>
-        <div>
-          <strong>Más control</strong>
-          <span>Guardas evidencia, repuestos y garantía.</span>
-        </div>
-      </section>
+      <section class="dashboard-view is-hidden" id="dashboardView" aria-labelledby="dashboardTitle">
+        <header class="topbar">
+          <a class="brand" href="./index.html" aria-label="Nyfrom Motors inicio">
+            <img class="brand-logo small" src="./assets/nyfrom-logo.jpg" alt="" />
+            <span>Nyfrom Motors</span>
+          </a>
 
-      <section id="rutas" class="section route-section">
-        <div class="section-heading">
-          <p class="eyebrow">Dos formas de ayudarte</p>
-          <h2>Te orientamos antes de decidir qué hacer con tu vehículo.</h2>
-        </div>
-        <div class="route-options">
-          <article>
-            <h3>Ya tienes una cotización o diagnóstico</h3>
-            <p>
-              Revisamos la información que te dieron para ayudarte a entender si la reparación, el precio,
-              los repuestos y la urgencia tienen sentido antes de aprobar.
-            </p>
-          </article>
-          <article>
-            <h3>Aún no sabes qué tiene tu vehículo</h3>
-            <p>
-              Si escuchas un ruido, notas una falla o no sabes con quién acudir, te ayudamos a ordenar los
-              síntomas, definir qué preguntar y tener una referencia inicial de posibles reparaciones.
-            </p>
-          </article>
-        </div>
-        <p class="expertise-note">
-          Te orientamos con criterio práctico y conocimiento técnico, basado en experiencia real con vehículos y
-          formación en mecánica automotriz.
-        </p>
-      </section>
+          <div class="session-actions">
+            <span id="sessionName">Sesión activa</span>
+            <button class="ghost-button" type="button" id="logoutButton">Cerrar sesión</button>
+          </div>
+        </header>
 
-      <section id="como-funciona" class="section">
-        <div class="section-heading">
-          <p class="eyebrow">Cómo funciona</p>
-          <h2>Una revisión rápida cuando más la necesitas.</h2>
-        </div>
-        <div class="steps">
-          <article>
-            <span>1</span>
-            <h3>Envía tu consulta</h3>
-            <p>Mándanos una foto, audio o mensaje con la cotización o la duda sobre tu vehículo.</p>
-          </article>
-          <article>
-            <span>2</span>
-            <h3>Revisamos la reparación</h3>
-            <p>Analizamos repuestos, mano de obra, urgencia y puntos que deberías aclarar.</p>
-          </article>
-          <article>
-            <span>3</span>
-            <h3>Decide con confianza</h3>
-            <p>Recibes preguntas concretas y una recomendación clara antes de pagar.</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="validamos" class="section split-section">
-        <div>
-          <p class="eyebrow">Qué revisamos</p>
-          <h2>No necesitas volverte experto para tomar una buena decisión.</h2>
+        <section class="hero-panel">
+          <p class="eyebrow">Base de la app</p>
+          <h1 id="dashboardTitle">Panel inicial</h1>
           <p>
-            Nyfrom Motors te ayuda a ordenar la información y detectar si necesitas aprobar, pedir más detalles,
-            cotizar en otro taller, revisar posibles reparaciones o esperar.
+            Esta primera versión solo guarda una sesión local y los datos básicos. Así podemos construir la app con calma
+            y entender cada parte antes de agregar más funciones.
           </p>
-        </div>
-        <ul class="check-list">
-          <li>Precio de repuestos y mano de obra.</li>
-          <li>Urgencia real de la reparación.</li>
-          <li>Guía o asesoramiento sobre tu vehículo y posibles reparaciones.</li>
-          <li>Señales de cotización incompleta o ambigua.</li>
-          <li>Preguntas útiles para hacerle al mecánico.</li>
-          <li>Evidencia, fotos, piezas cambiadas y garantía.</li>
-        </ul>
-      </section>
+        </section>
 
-      <section class="final-cta">
-        <p class="eyebrow">Validación MVP</p>
-        <h2>Antes de aprobar una reparación cara, pide una segunda opinión y orientación.</h2>
-        <a class="primary-button" href="https://wa.me/50259958761?text=Hola%20Nyfrom%20Motors%2C%20quiero%20asesor%C3%ADa%20sobre%20mi%20veh%C3%ADculo%20y%20posibles%20reparaciones.">
-          Pedir asesoría
-        </a>
+        <section class="workspace">
+          <form class="panel" id="profileForm">
+            <div class="section-heading">
+              <p class="eyebrow">Datos básicos</p>
+              <h2>Perfil de trabajo</h2>
+            </div>
+
+            <div class="field-grid">
+              <label>
+                Nombre
+                <input name="name" type="text" autocomplete="name" placeholder="Ej. Luis Fernando" />
+              </label>
+
+              <label>
+                Teléfono
+                <input name="phone" type="tel" autocomplete="tel" placeholder="Ej. 5995 8761" />
+              </label>
+
+              <label>
+                Correo
+                <input name="email" type="email" autocomplete="email" placeholder="Ej. admin@nyfrom.com" />
+              </label>
+
+              <label>
+                Rol
+                <select name="role">
+                  <option value="Administrador">Administrador</option>
+                  <option value="Asesor">Asesor</option>
+                  <option value="Operaciones">Operaciones</option>
+                </select>
+              </label>
+            </div>
+
+            <label>
+              Nota interna
+              <textarea name="notes" rows="4" placeholder="Ej. Priorizar casos enviados por WhatsApp."></textarea>
+            </label>
+
+            <div class="button-row">
+              <button class="primary-button" type="submit">Guardar datos</button>
+              <button class="secondary-button" type="button" id="clearProfileButton">Limpiar datos</button>
+            </div>
+          </form>
+
+          <aside class="panel summary-panel" aria-live="polite">
+            <div class="section-heading">
+              <p class="eyebrow">Resumen</p>
+              <h2>Datos guardados</h2>
+            </div>
+
+            <dl class="summary-list">
+              <div>
+                <dt>Nombre</dt>
+                <dd id="summaryName">Pendiente</dd>
+              </div>
+              <div>
+                <dt>Teléfono</dt>
+                <dd id="summaryPhone">Pendiente</dd>
+              </div>
+              <div>
+                <dt>Correo</dt>
+                <dd id="summaryEmail">Pendiente</dd>
+              </div>
+              <div>
+                <dt>Rol</dt>
+                <dd id="summaryRole">Administrador</dd>
+              </div>
+            </dl>
+
+            <p class="status-message" id="statusMessage">Aún no has guardado datos en esta sesión.</p>
+          </aside>
+        </section>
       </section>
     </main>
-
-    <footer>
-      <span>Nyfrom Motors</span>
-      <span>Una marca de Nyfrom Group, S.A.</span>
-    </footer>
   </body>
 </html>
