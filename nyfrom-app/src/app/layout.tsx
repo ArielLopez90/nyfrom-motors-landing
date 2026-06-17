@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Nyfrom Motors App",
-  description: "MVP para registrar vehiculos e historial de servicios.",
+  title: "NYFROM MOTORS Auto Hub",
+  description: "Todo lo relacionado a tu vehiculo en un solo lugar.",
 };
 
 export default function RootLayout({

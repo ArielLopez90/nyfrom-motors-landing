@@ -717,7 +717,10 @@ function BrandHeader({ compact = false }: { compact?: boolean }) {
       </div>
       <div>
         <p className="mb-1 text-xs font-black uppercase text-red-300">Nyfrom Motors</p>
-        <h1 className={`${compact ? "text-lg" : "text-4xl"} font-black`}>App de servicios</h1>
+        <h1 className={`${compact ? "text-lg" : "text-4xl"} font-black`}>NYFROM MOTORS Auto Hub</h1>
+        <p className={`${compact ? "text-xs" : "mt-2 text-base"} max-w-md font-bold text-zinc-400`}>
+          Todo lo relacionado a tu vehiculo en un solo lugar.
+        </p>
       </div>
     </div>
   );
