@@ -177,6 +177,25 @@ h1 {
   box-shadow: 0 20px 42px rgba(255, 59, 31, 0.3);
 }
 
+.secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 54px;
+  padding: 0 24px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-weight: 850;
+}
+
+.secondary-button:hover {
+  border-color: rgba(255, 106, 69, 0.72);
+  color: var(--red-soft);
+  transform: translateY(-1px);
+}
+
 .offer {
   max-width: 270px;
   color: var(--muted);
@@ -256,6 +275,70 @@ h2 {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 18px;
+}
+
+.app-section {
+  padding-top: 86px;
+}
+
+.app-section .section-heading p:not(.eyebrow) {
+  max-width: 760px;
+  color: var(--soft);
+  font-size: 1.08rem;
+  font-weight: 650;
+}
+
+.app-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.app-grid article {
+  min-height: 220px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 59, 31, 0.1), transparent 34%),
+    linear-gradient(180deg, rgba(20, 24, 26, 0.94), rgba(11, 13, 14, 0.94));
+  box-shadow: var(--shadow);
+}
+
+.app-grid span {
+  display: inline-flex;
+  margin-bottom: 24px;
+  color: var(--red-soft);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.app-grid p,
+.coming-soon li {
+  color: var(--muted);
+}
+
+.coming-soon {
+  display: grid;
+  grid-template-columns: 0.7fr 1.3fr;
+  gap: 28px;
+  margin: 22px 0 22px;
+  padding: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.coming-soon h3 {
+  margin-bottom: 0;
+}
+
+.coming-soon ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 20px;
 }
 
 .route-options article {
@@ -351,6 +434,10 @@ h3 {
   max-width: 760px;
 }
 
+.final-cta .secondary-button {
+  margin-left: 12px;
+}
+
 footer {
   display: flex;
   justify-content: space-between;
@@ -388,9 +475,11 @@ footer {
   }
 
   .trust-strip,
+  .app-grid,
   .route-options,
   .steps,
-  .split-section {
+  .split-section,
+  .coming-soon {
     grid-template-columns: 1fr;
   }
 
@@ -416,10 +505,16 @@ footer {
     align-items: stretch;
   }
 
-  .primary-button {
+  .primary-button,
+  .secondary-button {
     width: 100%;
     min-height: 58px;
     text-align: center;
+  }
+
+  .final-cta .secondary-button {
+    margin-top: 12px;
+    margin-left: 0;
   }
 
   .offer {
