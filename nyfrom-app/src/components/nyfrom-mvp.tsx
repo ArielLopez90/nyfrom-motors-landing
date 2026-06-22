@@ -405,9 +405,16 @@ export function NyfromMvp() {
     }
   }
 
-  async function saveVehicleMileage(event: FormEvent<HTMLFormElement>, vehicleId: string) {
+  async function saveVehicleMileage(event: FormEvent<HTMLFormElement>, fallbackVehicleId = "") {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
+    const vehicleId = String(formData.get("vehicle_id") ?? fallbackVehicleId);
+
+    if (!vehicleId) {
+      setStatus("Selecciona un vehiculo para actualizar kilometraje.");
+      return;
+    }
+
     await updateVehicleMileage(vehicleId, parseOptionalNumber(formData.get("current_mileage")));
   }
 
@@ -546,6 +553,8 @@ export function NyfromMvp() {
         </div>
       </header>
 
+      <MileageQuickUpdate vehicles={vehicles} onSubmit={saveVehicleMileage} />
+
       <section className="mb-5 grid gap-5 lg:grid-cols-[1fr_360px]">
         <VehicleOverview
           vehicles={vehicles}
@@ -570,7 +579,7 @@ export function NyfromMvp() {
           Servicios
         </TabButton>
         <TabButton active={activeView === "vehicle3d"} onClick={() => setActiveView("vehicle3d")}>
-          Vista 3D
+          Plano tecnico
         </TabButton>
       </section>
 
@@ -844,19 +853,6 @@ export function NyfromMvp() {
                     {vehicle.vehicle_type ? ` - Tipo: ${vehicle.vehicle_type}` : ""}
                     {vehicle.seats ? ` - ${vehicle.seats} asientos` : ""}
                   </span>
-                  <form className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]" onSubmit={(event) => void saveVehicleMileage(event, vehicle.id)}>
-                    <input
-                      className="min-h-11 rounded-lg border border-white/12 bg-black/25 px-3 text-white outline-none focus:border-red-300"
-                      name="current_mileage"
-                      type="number"
-                      min={0}
-                      defaultValue={vehicle.current_mileage ?? ""}
-                      placeholder="Kilometraje actual"
-                    />
-                    <button className="min-h-11 rounded-lg border border-white/12 px-4 font-black text-white" type="submit">
-                      <ButtonLabel icon="✓">Actualizar km</ButtonLabel>
-                    </button>
-                  </form>
                   <ActionRow>
                     <button type="button" onClick={() => {
                       setEditingVehicle(vehicle);
@@ -877,7 +873,7 @@ export function NyfromMvp() {
 
       {activeView === "vehicle3d" ? (
         <section className="mb-5">
-          <Panel eyebrow="Vista 3D" title="Blueprint del vehiculo">
+          <Panel eyebrow="Plano tecnico" title="Esquema del vehiculo">
             <VehicleBlueprintView items={healthItems} services={services} vehicles={vehicles} />
           </Panel>
         </section>
@@ -920,6 +916,54 @@ function ButtonLabel({ icon, children }: { icon: string; children: React.ReactNo
       <span aria-hidden="true">{icon}</span>
       <span>{children}</span>
     </span>
+  );
+}
+
+function MileageQuickUpdate({
+  vehicles,
+  onSubmit,
+}: {
+  vehicles: Vehicle[];
+  onSubmit: (event: FormEvent<HTMLFormElement>, fallbackVehicleId?: string) => void;
+}) {
+  const firstVehicle = vehicles[0];
+
+  if (!firstVehicle) {
+    return null;
+  }
+
+  return (
+    <section className="mb-5 rounded-lg border border-red-400/30 bg-red-950/25 p-5 shadow-xl shadow-red-950/20">
+      <form className="grid gap-4 lg:grid-cols-[1.1fr_1fr_auto]" onSubmit={(event) => onSubmit(event)}>
+        <div>
+          <p className="text-xs font-black uppercase text-red-200">Kilometraje actual</p>
+          <h2 className="mt-1 text-2xl font-black text-white">Actualiza el km del vehiculo</h2>
+        </div>
+        <select
+          className="min-h-14 rounded-lg border border-red-300/30 bg-black/35 px-4 text-base font-black text-white outline-none focus:border-red-200"
+          name="vehicle_id"
+          defaultValue={firstVehicle.id}
+        >
+          {vehicles.map((vehicle) => (
+            <option key={vehicle.id} value={vehicle.id}>
+              {vehicleLabel(vehicle)}
+            </option>
+          ))}
+        </select>
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <input
+            className="min-h-14 min-w-0 rounded-lg border border-red-300/30 bg-black/35 px-4 text-lg font-black text-white outline-none focus:border-red-200"
+            name="current_mileage"
+            type="number"
+            min={0}
+            placeholder={firstVehicle.current_mileage ? `${firstVehicle.current_mileage.toLocaleString("es-GT")} km` : "Kilometraje"}
+          />
+          <button className="min-h-14 rounded-lg bg-red-600 px-6 text-base font-black text-white shadow-lg shadow-red-950/30" type="submit">
+            Actualizar km
+          </button>
+        </div>
+      </form>
+    </section>
   );
 }
 
@@ -1129,9 +1173,9 @@ function StepBanner({ activeView, hasVehicle }: { activeView: AppView; hasVehicl
         : "Ve a Vehiculos para guardar tu primer registro antes de crear servicios.",
     },
     vehicle3d: {
-      eyebrow: "Vista 3D",
+      eyebrow: "Plano tecnico",
       title: "Revisa el estado grafico del vehiculo",
-      body: "Esta vista concentra llantas, frenos, suspension y motor para leer el estado de vida util de forma visual.",
+      body: "Esta vista muestra motor, llantas, frenos y amortiguadores en un esquema simple por posicion.",
     },
   };
 
@@ -1312,69 +1356,64 @@ function VehicleBlueprintView({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
-        <div className="relative min-h-[680px] overflow-hidden rounded-lg border border-cyan-300/20 bg-[#0b4f84] shadow-2xl shadow-cyan-950/40">
-          <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(255,255,255,0.24)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.24)_1px,transparent_1px)] [background-size:22px_22px]" />
+        <div className="relative min-h-[620px] overflow-hidden rounded-lg border border-white/15 bg-zinc-100 shadow-2xl shadow-black/30">
           <svg
-            className="absolute inset-4 h-[calc(100%-32px)] w-[calc(100%-32px)] text-cyan-100 drop-shadow-[0_0_10px_rgba(224,242,254,0.45)]"
+            className="absolute inset-4 h-[calc(100%-32px)] w-[calc(100%-32px)] text-zinc-700"
             fill="none"
             stroke="currentColor"
             strokeLinecap="round"
             strokeLinejoin="round"
-            viewBox="0 0 1100 640"
+            viewBox="0 0 1100 620"
           >
-            <g opacity="0.95" strokeWidth="2.5">
-              <rect x="8" y="8" width="1084" height="624" opacity="0.45" />
-
-              <path d="M48 234h488l26-61-39-21-69-81H269c-67 0-119 31-153 83l-55 22-13 58Z" />
-              <path d="M128 168c46-52 94-75 152-75h159l62 71" />
-              <path d="M206 93l-27 75" />
-              <path d="M328 93l-3 75" />
-              <path d="M439 96l42 70" />
-              <path d="M70 209h463" />
-              <path d="M126 247h330" />
+            <g opacity="0.95" strokeWidth="2.4">
+              <text x="42" y="36" fill="currentColor" stroke="none" className="text-[22px] font-black">Lateral</text>
+              <path d="M55 214h502l20-58-54-20-63-64H232c-66 0-119 25-158 77l-19 65Z" />
+              <path d="M126 145c40-39 84-57 137-57h176l52 50" />
+              <path d="M77 190h480" />
               <BlueprintWheel cx={155} cy={234} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} compact />
               <BlueprintWheel cx={442} cy={234} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} compact />
-              <BlueprintPartMarker x={455} y={184} part={markerById.motor} active={isPartVisible(markerById.motor, filter)} />
+              <BlueprintPartMarker x={492} y={178} part={markerById.motor} active={isPartVisible(markerById.motor, filter)} />
 
-              <path d="M706 79h156l39 54v147l-39 40H706l-39-40V133l39-54Z" />
-              <path d="M698 124h172" />
-              <path d="M682 278h204" />
-              <path d="M716 154h136l23 44v50H693v-50l23-44Z" />
-              <path d="M666 168h-27m263 0h27" />
-              <BlueprintPartMarker x={704} y={286} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} />
-              <BlueprintPartMarker x={864} y={286} part={markerById.tireFrontRight} active={isPartVisible(markerById.tireFrontRight, filter)} />
-              <BlueprintPartMarker x={704} y={142} part={markerById.brakesFrontLeft} active={isPartVisible(markerById.brakesFrontLeft, filter)} />
-              <BlueprintPartMarker x={864} y={142} part={markerById.brakesFrontRight} active={isPartVisible(markerById.brakesFrontRight, filter)} />
+              <text x="710" y="36" fill="currentColor" stroke="none" className="text-[22px] font-black">Frente</text>
+              <rect x="705" y="75" width="250" height="190" rx="24" />
+              <path d="M730 122h200" />
+              <path d="M750 164h160" />
+              <path d="M770 212h120" />
+              <path d="M690 170h-30m310 0h-30" />
+              <BlueprintPartMarker x={740} y={246} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} />
+              <BlueprintPartMarker x={920} y={246} part={markerById.tireFrontRight} active={isPartVisible(markerById.tireFrontRight, filter)} />
+              <BlueprintPartMarker x={740} y={115} part={markerById.brakesFrontLeft} active={isPartVisible(markerById.brakesFrontLeft, filter)} />
+              <BlueprintPartMarker x={920} y={115} part={markerById.brakesFrontRight} active={isPartVisible(markerById.brakesFrontRight, filter)} />
 
-              <path d="M78 438c55-62 143-90 244-90h138c55 0 89 17 118 45v103c-29 28-63 45-118 45H322c-101 0-189-28-244-90v-13Z" />
-              <path d="M132 437h383" />
-              <path d="M132 452h383" />
-              <path d="M244 355l-24 179" />
-              <path d="M454 355l29 179" />
-              <path d="M96 412h67m0 66H96" />
-              <path d="M499 410h68m0 68h-68" />
-              <BlueprintPartMarker x={510} y={392} part={markerById.motor} active={isPartVisible(markerById.motor, filter)} />
-              <BlueprintPartMarker x={150} y={412} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} />
-              <BlueprintPartMarker x={150} y={478} part={markerById.tireRearRight} active={isPartVisible(markerById.tireRearRight, filter)} />
-              <BlueprintPartMarker x={510} y={410} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} />
-              <BlueprintPartMarker x={510} y={478} part={markerById.tireFrontRight} active={isPartVisible(markerById.tireFrontRight, filter)} />
-              <BlueprintPartMarker x={205} y={412} part={markerById.suspensionRearLeft} active={isPartVisible(markerById.suspensionRearLeft, filter)} />
-              <BlueprintPartMarker x={205} y={478} part={markerById.suspensionRearRight} active={isPartVisible(markerById.suspensionRearRight, filter)} />
-              <BlueprintPartMarker x={455} y={410} part={markerById.suspensionFrontLeft} active={isPartVisible(markerById.suspensionFrontLeft, filter)} />
-              <BlueprintPartMarker x={455} y={478} part={markerById.suspensionFrontRight} active={isPartVisible(markerById.suspensionFrontRight, filter)} />
-              <BlueprintPartMarker x={265} y={412} part={markerById.brakesRearLeft} active={isPartVisible(markerById.brakesRearLeft, filter)} />
-              <BlueprintPartMarker x={265} y={478} part={markerById.brakesRearRight} active={isPartVisible(markerById.brakesRearRight, filter)} />
-              <BlueprintPartMarker x={395} y={410} part={markerById.brakesFrontLeft} active={isPartVisible(markerById.brakesFrontLeft, filter)} />
-              <BlueprintPartMarker x={395} y={478} part={markerById.brakesFrontRight} active={isPartVisible(markerById.brakesFrontRight, filter)} />
+              <text x="42" y="330" fill="currentColor" stroke="none" className="text-[22px] font-black">Planta</text>
+              <rect x="96" y="365" width="470" height="165" rx="82" />
+              <path d="M156 395h350" />
+              <path d="M156 500h350" />
+              <path d="M260 370v155" />
+              <path d="M452 370v155" />
+              <BlueprintPartMarker x={505} y={448} part={markerById.motor} active={isPartVisible(markerById.motor, filter)} />
+              <BlueprintPartMarker x={145} y={397} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} />
+              <BlueprintPartMarker x={145} y={498} part={markerById.tireRearRight} active={isPartVisible(markerById.tireRearRight, filter)} />
+              <BlueprintPartMarker x={535} y={397} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} />
+              <BlueprintPartMarker x={535} y={498} part={markerById.tireFrontRight} active={isPartVisible(markerById.tireFrontRight, filter)} />
+              <BlueprintPartMarker x={205} y={397} part={markerById.suspensionRearLeft} active={isPartVisible(markerById.suspensionRearLeft, filter)} />
+              <BlueprintPartMarker x={205} y={498} part={markerById.suspensionRearRight} active={isPartVisible(markerById.suspensionRearRight, filter)} />
+              <BlueprintPartMarker x={475} y={397} part={markerById.suspensionFrontLeft} active={isPartVisible(markerById.suspensionFrontLeft, filter)} />
+              <BlueprintPartMarker x={475} y={498} part={markerById.suspensionFrontRight} active={isPartVisible(markerById.suspensionFrontRight, filter)} />
+              <BlueprintPartMarker x={260} y={397} part={markerById.brakesRearLeft} active={isPartVisible(markerById.brakesRearLeft, filter)} />
+              <BlueprintPartMarker x={260} y={498} part={markerById.brakesRearRight} active={isPartVisible(markerById.brakesRearRight, filter)} />
+              <BlueprintPartMarker x={415} y={397} part={markerById.brakesFrontLeft} active={isPartVisible(markerById.brakesFrontLeft, filter)} />
+              <BlueprintPartMarker x={415} y={498} part={markerById.brakesFrontRight} active={isPartVisible(markerById.brakesFrontRight, filter)} />
 
-              <path d="M718 416h142l36 42v116H682V458l36-42Z" />
-              <path d="M708 548h162" />
-              <path d="M724 454h130" />
-              <path d="M670 504h40m158 0h40" />
-              <BlueprintPartMarker x={705} y={530} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} />
-              <BlueprintPartMarker x={872} y={530} part={markerById.tireRearRight} active={isPartVisible(markerById.tireRearRight, filter)} />
-              <BlueprintPartMarker x={705} y={464} part={markerById.brakesRearLeft} active={isPartVisible(markerById.brakesRearLeft, filter)} />
-              <BlueprintPartMarker x={872} y={464} part={markerById.brakesRearRight} active={isPartVisible(markerById.brakesRearRight, filter)} />
+              <text x="710" y="330" fill="currentColor" stroke="none" className="text-[22px] font-black">Posterior</text>
+              <rect x="705" y="365" width="250" height="180" rx="22" />
+              <path d="M730 505h200" />
+              <path d="M750 410h160" />
+              <path d="M690 480h-30m310 0h-30" />
+              <BlueprintPartMarker x={740} y={525} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} />
+              <BlueprintPartMarker x={920} y={525} part={markerById.tireRearRight} active={isPartVisible(markerById.tireRearRight, filter)} />
+              <BlueprintPartMarker x={740} y={410} part={markerById.brakesRearLeft} active={isPartVisible(markerById.brakesRearLeft, filter)} />
+              <BlueprintPartMarker x={920} y={410} part={markerById.brakesRearRight} active={isPartVisible(markerById.brakesRearRight, filter)} />
             </g>
           </svg>
         </div>
