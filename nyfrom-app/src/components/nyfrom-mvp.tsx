@@ -51,6 +51,8 @@ type ServiceRecord = {
   } | null;
 };
 
+type AppView = "dashboard" | "profile" | "vehicles" | "services" | "history";
+
 const serviceIntervals: Record<string, number> = {
   "Servicio de Motor": 7000,
   "Cambio de Aceite": 7000,
@@ -91,7 +93,7 @@ export function NyfromMvp() {
   const [selectedServiceType, setSelectedServiceType] = useState("Servicio de Motor");
   const [selectedServiceVehicleId, setSelectedServiceVehicleId] = useState("");
   const [historyVehicleId, setHistoryVehicleId] = useState("all");
-  const [activeView, setActiveView] = useState<"summary" | "register">("summary");
+  const [activeView, setActiveView] = useState<AppView>("profile");
 
   useEffect(() => {
     if (!supabase) {
@@ -117,6 +119,21 @@ export function NyfromMvp() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    if (!profile?.driving_distance) {
+      setActiveView("profile");
+      return;
+    }
+
+    if (!vehicles.length) {
+      setActiveView("vehicles");
+    }
+  }, [user, profile?.driving_distance, vehicles.length]);
 
   const dailyKm = getDailyKm(profile);
   const suggestedServiceDate = getSuggestedServiceDate(
@@ -246,6 +263,7 @@ export function NyfromMvp() {
 
     setStatus("Perfil guardado.");
     await loadData();
+    setActiveView(vehicles.length ? "dashboard" : "vehicles");
   }
 
   async function saveVehicle(event: FormEvent<HTMLFormElement>) {
@@ -290,6 +308,7 @@ export function NyfromMvp() {
     setEditingVehicle(null);
     setStatus(editingVehicle ? "Vehiculo actualizado." : "Vehiculo guardado.");
     await loadData();
+    setActiveView("services");
   }
 
   async function saveService(event: FormEvent<HTMLFormElement>) {
@@ -334,6 +353,7 @@ export function NyfromMvp() {
     setSelectedServiceType("Servicio de Motor");
     setStatus(editingService ? "Servicio actualizado." : "Servicio guardado.");
     await loadData();
+    setActiveView("dashboard");
   }
 
   async function deleteVehicle(vehicle: Vehicle) {
@@ -445,21 +465,33 @@ export function NyfromMvp() {
           nextMonthCost={nextMonthCost}
           annualCost={annualCost}
         />
-        <ProfileSummary profile={profile} userEmail={user.email ?? ""} dailyKm={dailyKm} />
+        <ProfileSummary profile={profile} userEmail={user.email ?? ""} dailyKm={dailyKm} onEdit={() => setActiveView("profile")} />
       </section>
 
-      <section className="mb-5 grid grid-cols-2 gap-2 rounded-lg border border-white/12 bg-[#1d2024] p-2 shadow-xl shadow-black/20">
-        <TabButton active={activeView === "summary"} onClick={() => setActiveView("summary")}>
-          <ButtonLabel icon="📊">Resumen</ButtonLabel>
+      <section className="mb-5 grid gap-2 rounded-lg border border-white/12 bg-[#1d2024] p-2 shadow-xl shadow-black/20 md:grid-cols-5">
+        <TabButton active={activeView === "dashboard"} onClick={() => setActiveView("dashboard")}>
+          Dashboard
         </TabButton>
-        <TabButton active={activeView === "register"} onClick={() => setActiveView("register")}>
-          <ButtonLabel icon="📝">Registrar datos</ButtonLabel>
+        <TabButton active={activeView === "profile"} onClick={() => setActiveView("profile")}>
+          Perfil
+        </TabButton>
+        <TabButton active={activeView === "vehicles"} onClick={() => setActiveView("vehicles")}>
+          Vehiculos
+        </TabButton>
+        <TabButton active={activeView === "services"} onClick={() => setActiveView("services")}>
+          Servicios
+        </TabButton>
+        <TabButton active={activeView === "history"} onClick={() => setActiveView("history")}>
+          Historial
         </TabButton>
       </section>
 
-      {activeView === "register" ? (
+      <StepBanner activeView={activeView} hasVehicle={vehicles.length > 0} />
+
+      {activeView === "profile" || activeView === "vehicles" || activeView === "services" ? (
         <>
-      <section className="mb-5 grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
+      <section className={activeView === "profile" || activeView === "vehicles" ? "mb-5" : "hidden"}>
+        {activeView === "profile" ? (
         <Panel eyebrow="Usuario" title="Perfil y recorrido" id="perfil">
           <form className="grid gap-4" onSubmit={saveProfile} key={profile?.user_id ?? "profile"}>
             <div className="grid gap-4 md:grid-cols-2">
@@ -472,7 +504,7 @@ export function NyfromMvp() {
                 <option value="Otro">Otro</option>
               </SelectField>
               <TextField label="Fecha de nacimiento" name="birth_date" type="date" defaultValue={profile?.birth_date ?? ""} />
-              <TextField label="Km recorridos" name="driving_distance" type="number" min={0} defaultValue={profile?.driving_distance ?? ""} />
+              <TextField label="Km recorridos diarios" name="driving_distance" type="number" min={1} required defaultValue={profile?.driving_distance ?? ""} />
               <SelectField label="Periodo" name="distance_period" defaultValue={profile?.distance_period ?? "daily"}>
                 <option value="daily">Por dia</option>
                 <option value="monthly">Por mes</option>
@@ -483,7 +515,9 @@ export function NyfromMvp() {
             </button>
           </form>
         </Panel>
+        ) : null}
 
+        {activeView === "vehicles" ? (
         <Panel eyebrow="Registro" title={editingVehicle ? "Editar vehiculo" : "Datos del vehiculo"} id="vehiculo-form">
           <form className="grid gap-4" onSubmit={saveVehicle} key={editingVehicle?.id ?? "new-vehicle"}>
             <div className="grid gap-4 md:grid-cols-2">
@@ -520,9 +554,10 @@ export function NyfromMvp() {
             </div>
           </form>
         </Panel>
+        ) : null}
       </section>
 
-      <section className="mb-5">
+      <section className={activeView === "services" ? "mb-5" : "hidden"}>
         <Panel eyebrow="Historial" title={editingService ? "Editar servicio" : "Registrar servicio"} id="servicio-form">
           <form className="grid gap-4" onSubmit={saveService} key={`${editingService?.id ?? "new-service"}-${selectedServiceVehicleId}`}>
             <SelectField
@@ -595,7 +630,7 @@ export function NyfromMvp() {
         </>
       ) : null}
 
-      {activeView === "summary" ? (
+      {activeView === "dashboard" || activeView === "history" ? (
         <>
       <section className="mb-5 grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
         <Panel eyebrow="Proximo servicio" title="🧰 Proximo servicio" id="proximos-servicios">
@@ -654,7 +689,7 @@ export function NyfromMvp() {
                       setEditingService(service);
                       setSelectedServiceType(service.service_type);
                       setSelectedServiceVehicleId(service.vehicle_id);
-                      setActiveView("register");
+                      setActiveView("services");
                     }}><ButtonLabel icon="✏️">Editar</ButtonLabel></button>
                     <button type="button" onClick={() => void deleteService(service)}><ButtonLabel icon="🗑️">Borrar</ButtonLabel></button>
                   </ActionRow>
@@ -689,7 +724,7 @@ export function NyfromMvp() {
                   <ActionRow>
                     <button type="button" onClick={() => {
                       setEditingVehicle(vehicle);
-                      setActiveView("register");
+                      setActiveView("vehicles");
                     }}><ButtonLabel icon="✏️">Editar</ButtonLabel></button>
                     <button type="button" onClick={() => void deleteVehicle(vehicle)}><ButtonLabel icon="🗑️">Borrar</ButtonLabel></button>
                   </ActionRow>
@@ -877,10 +912,12 @@ function ProfileSummary({
   profile,
   userEmail,
   dailyKm,
+  onEdit,
 }: {
   profile: Profile | null;
   userEmail: string;
   dailyKm: number;
+  onEdit: () => void;
 }) {
   const name = getProfileName(profile) || "Perfil pendiente";
 
@@ -902,12 +939,13 @@ function ProfileSummary({
         />
         <SummaryLine label="Promedio diario" value={dailyKm ? `${dailyKm.toFixed(1)} km/dia` : "Pendiente"} />
       </dl>
-      <a
+      <button
         className="mt-5 inline-flex min-h-11 items-center rounded-lg border border-white/12 px-4 font-black text-white"
-        href="#perfil"
+        type="button"
+        onClick={onEdit}
       >
         Editar perfil
-      </a>
+      </button>
     </aside>
   );
 }
@@ -918,6 +956,48 @@ function SummaryLine({ label, value }: { label: string; value: string }) {
       <dt className="font-bold text-zinc-500">{label}</dt>
       <dd className="font-bold text-zinc-200">{value}</dd>
     </div>
+  );
+}
+
+function StepBanner({ activeView, hasVehicle }: { activeView: AppView; hasVehicle: boolean }) {
+  const copy: Record<AppView, { eyebrow: string; title: string; body: string }> = {
+    dashboard: {
+      eyebrow: "Dashboard",
+      title: "Resumen general de tu Auto Hub",
+      body: "Aqui ves tus vehiculos, costos, proximos servicios e historial reciente.",
+    },
+    profile: {
+      eyebrow: "Paso 1",
+      title: "Completa tu perfil de recorrido",
+      body: "Solo los kilometros diarios son obligatorios. Los demas datos ayudan a personalizar tu cuenta.",
+    },
+    vehicles: {
+      eyebrow: "Paso 2",
+      title: "Registra tu vehiculo",
+      body: "Guarda la informacion base del vehiculo una sola vez. Luego podras volver aqui para agregar o editar vehiculos.",
+    },
+    services: {
+      eyebrow: "Paso 3",
+      title: hasVehicle ? "Registra servicios y mantenimientos" : "Primero necesitas agregar un vehiculo",
+      body: hasVehicle
+        ? "Selecciona un vehiculo, registra el servicio y Auto Hub calculara proximas recomendaciones."
+        : "Ve a Vehiculos para guardar tu primer registro antes de crear servicios.",
+    },
+    history: {
+      eyebrow: "Historial",
+      title: "Consulta servicios y recomendaciones",
+      body: "Filtra por vehiculo para revisar su historial y proximos servicios recomendados.",
+    },
+  };
+
+  const item = copy[activeView];
+
+  return (
+    <section className="mb-5 rounded-lg border border-white/12 bg-white/5 p-5">
+      <p className="mb-2 text-xs font-black uppercase text-red-300">{item.eyebrow}</p>
+      <h2 className="text-2xl font-black">{item.title}</h2>
+      <p className="mt-2 max-w-3xl text-sm font-bold text-zinc-400">{item.body}</p>
+    </section>
   );
 }
 
