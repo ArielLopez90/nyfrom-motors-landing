@@ -1402,19 +1402,21 @@ function VehicleBlueprintView({
               <rect x="322" y="410" width="68" height="68" rx="10" />
               <path d="M82 422h55m0 42H82" />
               <path d="M573 422h55m-55 42h55" />
+              <text x="92" y="572" fill="currentColor" stroke="none" className="text-[18px] font-black">BACK</text>
+              <text x="546" y="572" fill="currentColor" stroke="none" className="text-[18px] font-black">FRONT</text>
               <BlueprintPartMarker x={570} y={443} part={markerById.motor} active={isPartVisible(markerById.motor, filter)} />
               <BlueprintPartMarker x={120} y={390} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} />
               <BlueprintPartMarker x={120} y={496} part={markerById.tireRearRight} active={isPartVisible(markerById.tireRearRight, filter)} />
               <BlueprintPartMarker x={594} y={390} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} />
               <BlueprintPartMarker x={594} y={496} part={markerById.tireFrontRight} active={isPartVisible(markerById.tireFrontRight, filter)} />
-              <BlueprintPartMarker x={190} y={390} part={markerById.suspensionRearLeft} active={isPartVisible(markerById.suspensionRearLeft, filter)} />
-              <BlueprintPartMarker x={190} y={496} part={markerById.suspensionRearRight} active={isPartVisible(markerById.suspensionRearRight, filter)} />
-              <BlueprintPartMarker x={510} y={390} part={markerById.suspensionFrontLeft} active={isPartVisible(markerById.suspensionFrontLeft, filter)} />
-              <BlueprintPartMarker x={510} y={496} part={markerById.suspensionFrontRight} active={isPartVisible(markerById.suspensionFrontRight, filter)} />
-              <BlueprintPartMarker x={252} y={390} part={markerById.brakesRearLeft} active={isPartVisible(markerById.brakesRearLeft, filter)} />
-              <BlueprintPartMarker x={252} y={496} part={markerById.brakesRearRight} active={isPartVisible(markerById.brakesRearRight, filter)} />
-              <BlueprintPartMarker x={450} y={390} part={markerById.brakesFrontLeft} active={isPartVisible(markerById.brakesFrontLeft, filter)} />
-              <BlueprintPartMarker x={450} y={496} part={markerById.brakesFrontRight} active={isPartVisible(markerById.brakesFrontRight, filter)} />
+              <BlueprintPartMarker x={120} y={390} part={markerById.suspensionRearLeft} active={isPartVisible(markerById.suspensionRearLeft, filter)} />
+              <BlueprintPartMarker x={120} y={496} part={markerById.suspensionRearRight} active={isPartVisible(markerById.suspensionRearRight, filter)} />
+              <BlueprintPartMarker x={594} y={390} part={markerById.suspensionFrontLeft} active={isPartVisible(markerById.suspensionFrontLeft, filter)} />
+              <BlueprintPartMarker x={594} y={496} part={markerById.suspensionFrontRight} active={isPartVisible(markerById.suspensionFrontRight, filter)} />
+              <BlueprintPartMarker x={120} y={390} part={markerById.brakesRearLeft} active={isPartVisible(markerById.brakesRearLeft, filter)} />
+              <BlueprintPartMarker x={120} y={496} part={markerById.brakesRearRight} active={isPartVisible(markerById.brakesRearRight, filter)} />
+              <BlueprintPartMarker x={594} y={390} part={markerById.brakesFrontLeft} active={isPartVisible(markerById.brakesFrontLeft, filter)} />
+              <BlueprintPartMarker x={594} y={496} part={markerById.brakesFrontRight} active={isPartVisible(markerById.brakesFrontRight, filter)} />
 
               <text x="710" y="330" fill="currentColor" stroke="none" className="text-[22px] font-black">Posterior</text>
               <path d="M704 552h253l13-38-8-82-35-57H735l-35 57-8 82 12 38Z" />
@@ -1460,8 +1462,12 @@ function BlueprintWheel({
   const radius = compact ? 34 : small ? 38 : 58;
   const color = part ? blueprintColor(part.percent) : "#22d3ee";
 
+  if (!active) {
+    return null;
+  }
+
   return (
-    <g strokeWidth={small || compact ? 2 : 3} opacity={active ? "0.98" : "0.16"} stroke={color}>
+    <g strokeWidth={small || compact ? 2 : 3} opacity="0.98" stroke={color}>
       <circle cx={cx} cy={cy} r={radius} />
       <circle cx={cx} cy={cy} r={radius * 0.62} />
       <circle cx={cx} cy={cy} r={radius * 0.16} />
@@ -1481,14 +1487,14 @@ function BlueprintWheel({
 }
 
 function BlueprintPartMarker({ x, y, part, active }: { x: number; y: number; part?: BlueprintPart; active: boolean }) {
-  if (!part) {
+  if (!part || !active) {
     return null;
   }
 
   const color = blueprintColor(part.percent);
 
   return (
-    <g opacity={active ? "1" : "0.16"} stroke={color} fill="none">
+    <g opacity="1" stroke={color} fill="none">
       <circle cx={x} cy={y} r="22" strokeWidth="4" />
       <circle cx={x} cy={y} r="8" fill={color} stroke="none" />
       <text x={x} y={y - 34} fill={color} stroke="none" textAnchor="middle" className="text-[24px] font-black">
@@ -1838,7 +1844,15 @@ function getPositionPercent(services: ServiceRecord[], vehicles: Vehicle[], posi
 }
 
 function isPartVisible(part: BlueprintPart | undefined, filter: string) {
-  return Boolean(part && (filter === "all" || part.group === filter));
+  if (!part) {
+    return false;
+  }
+
+  if (filter === "all") {
+    return part.group === "motor" || part.group === "tires";
+  }
+
+  return part.group === filter;
 }
 
 function blueprintColor(percent: number) {
