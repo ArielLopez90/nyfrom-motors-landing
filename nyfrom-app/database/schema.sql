@@ -46,13 +46,15 @@ create table if not exists public.vehicles (
   color text,
   cylinders integer,
   cc integer,
+  current_mileage integer,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint vehicles_vin_length check (char_length(vin) between 6 and 17),
   constraint vehicles_model_year_check check (model_year is null or model_year between 1900 and 2100),
   constraint vehicles_seats_check check (seats is null or seats >= 1),
   constraint vehicles_cylinders_check check (cylinders is null or cylinders >= 1),
-  constraint vehicles_cc_check check (cc is null or cc >= 1)
+  constraint vehicles_cc_check check (cc is null or cc >= 1),
+  constraint vehicles_current_mileage_check check (current_mileage is null or current_mileage >= 0)
 );
 
 alter table public.vehicles add column if not exists plate text;
@@ -63,16 +65,19 @@ alter table public.vehicles add column if not exists seats integer;
 alter table public.vehicles add column if not exists color text;
 alter table public.vehicles add column if not exists cylinders integer;
 alter table public.vehicles add column if not exists cc integer;
+alter table public.vehicles add column if not exists current_mileage integer;
 
 alter table public.vehicles drop constraint if exists vehicles_model_year_check;
 alter table public.vehicles drop constraint if exists vehicles_seats_check;
 alter table public.vehicles drop constraint if exists vehicles_cylinders_check;
 alter table public.vehicles drop constraint if exists vehicles_cc_check;
+alter table public.vehicles drop constraint if exists vehicles_current_mileage_check;
 
 alter table public.vehicles add constraint vehicles_model_year_check check (model_year is null or model_year between 1900 and 2100);
 alter table public.vehicles add constraint vehicles_seats_check check (seats is null or seats >= 1);
 alter table public.vehicles add constraint vehicles_cylinders_check check (cylinders is null or cylinders >= 1);
 alter table public.vehicles add constraint vehicles_cc_check check (cc is null or cc >= 1);
+alter table public.vehicles add constraint vehicles_current_mileage_check check (current_mileage is null or current_mileage >= 0);
 
 create table if not exists public.service_records (
   id uuid primary key default gen_random_uuid(),

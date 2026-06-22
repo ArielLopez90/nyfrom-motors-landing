@@ -31,6 +31,7 @@ type Vehicle = {
   color: string | null;
   cylinders: number | null;
   cc: number | null;
+  current_mileage: number | null;
 };
 
 type ServiceRecord = {
@@ -151,12 +152,12 @@ export function NyfromMvp() {
     historyVehicleId === "all"
       ? services
       : services.filter((service) => service.vehicle_id === historyVehicleId);
-  const upcomingServices = getUpcomingServices(services, dailyKm);
+  const upcomingServices = getUpcomingServices(services, vehicles, dailyKm);
   const filteredUpcomingServices =
     historyVehicleId === "all"
       ? upcomingServices
       : upcomingServices.filter((service) => service.vehicleId === historyVehicleId);
-  const healthItems = getServiceHealth(services);
+  const healthItems = getServiceHealth(services, vehicles);
   const nextMonthCost = getNextMonthEstimatedCost(upcomingServices);
   const annualCost = getAnnualServiceCost(services);
 
@@ -170,7 +171,7 @@ export function NyfromMvp() {
       supabase
         .from("vehicles")
         .select(
-          "id, owner_name, plate, vin, make, model_line, model_year, engine, usage, vehicle_type, seats, color, cylinders, cc",
+          "id, owner_name, plate, vin, make, model_line, model_year, engine, usage, vehicle_type, seats, color, cylinders, cc, current_mileage",
         )
         .order("created_at", { ascending: false }),
       supabase
@@ -299,6 +300,7 @@ export function NyfromMvp() {
       color: String(formData.get("color") ?? "").trim() || null,
       cylinders: parseOptionalNumber(formData.get("cylinders")),
       cc: parseOptionalNumber(formData.get("cc")),
+      current_mileage: parseOptionalNumber(formData.get("current_mileage")),
     };
 
     const request = editingVehicle
@@ -372,6 +374,10 @@ export function NyfromMvp() {
       return;
     }
 
+    if (payload.mileage) {
+      await updateVehicleMileage(payload.vehicle_id, payload.mileage, false);
+    }
+
     form.reset();
     setEditingService(null);
     setSelectedServiceVehicleId(payload.vehicle_id);
@@ -379,6 +385,63 @@ export function NyfromMvp() {
     setStatus(editingService ? "Servicio actualizado." : "Servicio guardado.");
     await loadData();
     setActiveView("dashboard");
+  }
+
+  async function updateVehicleMileage(vehicleId: string, mileage: number | null, showMessage = true) {
+    if (!supabase || !mileage) {
+      return;
+    }
+
+    const { error } = await supabase.from("vehicles").update({ current_mileage: mileage }).eq("id", vehicleId);
+
+    if (error) {
+      setStatus(`No se pudo actualizar kilometraje: ${error.message}`);
+      return;
+    }
+
+    if (showMessage) {
+      setStatus("Kilometraje actualizado.");
+      await loadData();
+    }
+  }
+
+  async function saveVehicleMileage(event: FormEvent<HTMLFormElement>, vehicleId: string) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    await updateVehicleMileage(vehicleId, parseOptionalNumber(formData.get("current_mileage")));
+  }
+
+  async function completeUpcomingService(item: ReturnType<typeof getUpcomingServices>[number]) {
+    if (!supabase || !user) {
+      return;
+    }
+
+    const vehicle = vehicles.find((currentVehicle) => currentVehicle.id === item.vehicleId);
+    const mileage = vehicle?.current_mileage ?? item.nextMileage;
+
+    if (!mileage) {
+      setStatus("Primero actualiza el kilometraje actual del vehiculo.");
+      return;
+    }
+
+    const { error } = await supabase.from("service_records").insert({
+      user_id: user.id,
+      vehicle_id: item.vehicleId,
+      service_type: item.serviceType,
+      service_date: today,
+      mileage,
+      recommended_interval_km: item.intervalKm,
+      estimated_cost: item.estimatedCost,
+      notes: "Servicio marcado como realizado desde proximo servicio.",
+    });
+
+    if (error) {
+      setStatus(`No se pudo registrar servicio realizado: ${error.message}`);
+      return;
+    }
+
+    setStatus("Servicio registrado y estimacion reiniciada.");
+    await loadData();
   }
 
   async function deleteVehicle(vehicle: Vehicle) {
@@ -564,6 +627,7 @@ export function NyfromMvp() {
               <TextField label="Color" name="color" defaultValue={editingVehicle?.color ?? ""} />
               <TextField label="Cilindros" name="cylinders" type="number" min={1} defaultValue={editingVehicle?.cylinders ?? ""} />
               <TextField label="CC" name="cc" type="number" min={1} defaultValue={editingVehicle?.cc ?? ""} />
+              <TextField label="Kilometraje actual" name="current_mileage" type="number" min={0} defaultValue={editingVehicle?.current_mileage ?? ""} />
             </div>
             <div className="flex flex-wrap gap-3">
               <button className="min-h-12 rounded-lg bg-red-600 px-5 font-black text-white" type="submit">
@@ -707,6 +771,11 @@ export function NyfromMvp() {
                   <strong className="mt-3 block rounded-lg border border-red-400/40 bg-red-950/30 p-3 text-lg text-red-200">
                     Fecha estimada: {formatDate(item.estimatedDate)}
                   </strong>
+                  <ActionRow>
+                    <button type="button" onClick={() => void completeUpcomingService(item)}>
+                      <ButtonLabel icon="✓">Marcar realizado</ButtonLabel>
+                    </button>
+                  </ActionRow>
                 </RecordCard>
               ))
             ) : (
@@ -775,6 +844,19 @@ export function NyfromMvp() {
                     {vehicle.vehicle_type ? ` - Tipo: ${vehicle.vehicle_type}` : ""}
                     {vehicle.seats ? ` - ${vehicle.seats} asientos` : ""}
                   </span>
+                  <form className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]" onSubmit={(event) => void saveVehicleMileage(event, vehicle.id)}>
+                    <input
+                      className="min-h-11 rounded-lg border border-white/12 bg-black/25 px-3 text-white outline-none focus:border-red-300"
+                      name="current_mileage"
+                      type="number"
+                      min={0}
+                      defaultValue={vehicle.current_mileage ?? ""}
+                      placeholder="Kilometraje actual"
+                    />
+                    <button className="min-h-11 rounded-lg border border-white/12 px-4 font-black text-white" type="submit">
+                      <ButtonLabel icon="✓">Actualizar km</ButtonLabel>
+                    </button>
+                  </form>
                   <ActionRow>
                     <button type="button" onClick={() => {
                       setEditingVehicle(vehicle);
@@ -796,7 +878,7 @@ export function NyfromMvp() {
       {activeView === "vehicle3d" ? (
         <section className="mb-5">
           <Panel eyebrow="Vista 3D" title="Blueprint del vehiculo">
-            <VehicleBlueprintView items={healthItems} services={services} />
+            <VehicleBlueprintView items={healthItems} services={services} vehicles={vehicles} />
           </Panel>
         </section>
       ) : null}
@@ -935,6 +1017,7 @@ function VehicleOverview({
             <SummaryLine label="VIN" value={featuredVehicle.vin} />
             <SummaryLine label="Motor" value={featuredVehicle.engine} />
             <SummaryLine label="Color" value={featuredVehicle.color || "Pendiente"} />
+            <SummaryLine label="Kilometraje" value={featuredVehicle.current_mileage ? `${featuredVehicle.current_mileage.toLocaleString("es-GT")} km` : "Pendiente"} />
             <SummaryLine label="Historial" value={`${featuredServices} servicios`} />
           </dl>
         ) : (
@@ -1194,12 +1277,14 @@ function ServiceHealthList({ items }: { items: ReturnType<typeof getServiceHealt
 function VehicleBlueprintView({
   items,
   services,
+  vehicles,
 }: {
   items: ReturnType<typeof getServiceHealth>;
   services: ServiceRecord[];
+  vehicles: Vehicle[];
 }) {
   const [filter, setFilter] = useState("all");
-  const parts = getBlueprintParts(items, services);
+  const parts = getBlueprintParts(items, services, vehicles);
   const visibleParts = parts.filter((part) => filter === "all" || part.group === filter);
   const markerById = Object.fromEntries(parts.map((part) => [part.id, part])) as Record<string, BlueprintPart>;
 
@@ -1227,52 +1312,71 @@ function VehicleBlueprintView({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
-        <div className="relative min-h-[640px] overflow-hidden rounded-lg border border-cyan-300/20 bg-black shadow-2xl shadow-cyan-950/40">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(14,165,233,0.18),transparent_48%)]" />
-          <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(34,211,238,0.22)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.22)_1px,transparent_1px)] [background-size:30px_30px]" />
-        <svg
-          className="absolute inset-x-0 top-20 mx-auto h-[470px] w-[min(1080px,96%)] text-cyan-300 drop-shadow-[0_0_18px_rgba(34,211,238,0.75)]"
-          fill="none"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          viewBox="0 0 1100 520"
-        >
-          <g opacity="0.95" strokeWidth="4">
-            <path d="M95 353c22-74 82-102 154-111 58-92 148-144 265-157 160-18 318 13 436 81 56 32 98 87 119 156 9 29-3 48-36 57-70 20-141 32-212 39-18-69-71-113-139-113-71 0-124 47-138 119H358c-15-71-69-118-139-118-65 0-116 42-136 105-58-12-74-25-62-58Z" />
-            <path d="M247 242c82-74 187-112 314-114 153-3 284 39 393 126" />
-            <path d="M306 247h554c43 0 81 25 102 64" />
-            <path d="M125 352h865" />
-            <path d="M373 246l-45 159" />
-            <path d="M541 129l-4 119" />
-            <path d="M719 147l-72 101" />
-            <path d="M647 248l28 170" />
-            <path d="M386 332h252l56 64H332l54-64Z" />
-            <path d="M455 269h120l42 45-36 40H452l-38-41 41-44Z" />
-          </g>
-          <g opacity="0.55" strokeWidth="1.4">
-            {Array.from({ length: 15 }).map((_, index) => (
-              <path
-                key={`body-line-${index}`}
-                d={`M${170 + index * 54} 246 C${230 + index * 38} ${150 + (index % 4) * 22}, ${545 + index * 13} ${125 + (index % 5) * 18}, ${925 - index * 24} 330`}
-              />
-            ))}
-            {Array.from({ length: 13 }).map((_, index) => (
-              <path key={`cross-line-${index}`} d={`M${270 + index * 54} 142 L${236 + index * 50} 414`} />
-            ))}
-          </g>
+        <div className="relative min-h-[680px] overflow-hidden rounded-lg border border-cyan-300/20 bg-[#0b4f84] shadow-2xl shadow-cyan-950/40">
+          <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(255,255,255,0.24)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.24)_1px,transparent_1px)] [background-size:22px_22px]" />
+          <svg
+            className="absolute inset-4 h-[calc(100%-32px)] w-[calc(100%-32px)] text-cyan-100 drop-shadow-[0_0_10px_rgba(224,242,254,0.45)]"
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            viewBox="0 0 1100 640"
+          >
+            <g opacity="0.95" strokeWidth="2.5">
+              <rect x="8" y="8" width="1084" height="624" opacity="0.45" />
 
-          <BlueprintWheel cx={219} cy={412} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} />
-          <BlueprintWheel cx={684} cy={412} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} />
-          <BlueprintWheel cx={292} cy={257} part={markerById.tireRearRight} active={isPartVisible(markerById.tireRearRight, filter)} small />
-          <BlueprintWheel cx={760} cy={259} part={markerById.tireFrontRight} active={isPartVisible(markerById.tireFrontRight, filter)} small />
+              <path d="M48 234h488l26-61-39-21-69-81H269c-67 0-119 31-153 83l-55 22-13 58Z" />
+              <path d="M128 168c46-52 94-75 152-75h159l62 71" />
+              <path d="M206 93l-27 75" />
+              <path d="M328 93l-3 75" />
+              <path d="M439 96l42 70" />
+              <path d="M70 209h463" />
+              <path d="M126 247h330" />
+              <BlueprintWheel cx={155} cy={234} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} compact />
+              <BlueprintWheel cx={442} cy={234} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} compact />
+              <BlueprintPartMarker x={455} y={184} part={markerById.motor} active={isPartVisible(markerById.motor, filter)} />
 
-          <BlueprintPartMarker x={512} y={310} part={markerById.motor} active={isPartVisible(markerById.motor, filter)} />
-          <BlueprintPartMarker x={700} y={330} part={markerById.brakesFront} active={isPartVisible(markerById.brakesFront, filter)} />
-          <BlueprintPartMarker x={202} y={330} part={markerById.brakesRear} active={isPartVisible(markerById.brakesRear, filter)} />
-          <BlueprintPartMarker x={784} y={365} part={markerById.suspensionFront} active={isPartVisible(markerById.suspensionFront, filter)} />
-          <BlueprintPartMarker x={360} y={365} part={markerById.suspensionRear} active={isPartVisible(markerById.suspensionRear, filter)} />
-        </svg>
+              <path d="M706 79h156l39 54v147l-39 40H706l-39-40V133l39-54Z" />
+              <path d="M698 124h172" />
+              <path d="M682 278h204" />
+              <path d="M716 154h136l23 44v50H693v-50l23-44Z" />
+              <path d="M666 168h-27m263 0h27" />
+              <BlueprintPartMarker x={704} y={286} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} />
+              <BlueprintPartMarker x={864} y={286} part={markerById.tireFrontRight} active={isPartVisible(markerById.tireFrontRight, filter)} />
+              <BlueprintPartMarker x={704} y={142} part={markerById.brakesFrontLeft} active={isPartVisible(markerById.brakesFrontLeft, filter)} />
+              <BlueprintPartMarker x={864} y={142} part={markerById.brakesFrontRight} active={isPartVisible(markerById.brakesFrontRight, filter)} />
+
+              <path d="M78 438c55-62 143-90 244-90h138c55 0 89 17 118 45v103c-29 28-63 45-118 45H322c-101 0-189-28-244-90v-13Z" />
+              <path d="M132 437h383" />
+              <path d="M132 452h383" />
+              <path d="M244 355l-24 179" />
+              <path d="M454 355l29 179" />
+              <path d="M96 412h67m0 66H96" />
+              <path d="M499 410h68m0 68h-68" />
+              <BlueprintPartMarker x={510} y={392} part={markerById.motor} active={isPartVisible(markerById.motor, filter)} />
+              <BlueprintPartMarker x={150} y={412} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} />
+              <BlueprintPartMarker x={150} y={478} part={markerById.tireRearRight} active={isPartVisible(markerById.tireRearRight, filter)} />
+              <BlueprintPartMarker x={510} y={410} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} />
+              <BlueprintPartMarker x={510} y={478} part={markerById.tireFrontRight} active={isPartVisible(markerById.tireFrontRight, filter)} />
+              <BlueprintPartMarker x={205} y={412} part={markerById.suspensionRearLeft} active={isPartVisible(markerById.suspensionRearLeft, filter)} />
+              <BlueprintPartMarker x={205} y={478} part={markerById.suspensionRearRight} active={isPartVisible(markerById.suspensionRearRight, filter)} />
+              <BlueprintPartMarker x={455} y={410} part={markerById.suspensionFrontLeft} active={isPartVisible(markerById.suspensionFrontLeft, filter)} />
+              <BlueprintPartMarker x={455} y={478} part={markerById.suspensionFrontRight} active={isPartVisible(markerById.suspensionFrontRight, filter)} />
+              <BlueprintPartMarker x={265} y={412} part={markerById.brakesRearLeft} active={isPartVisible(markerById.brakesRearLeft, filter)} />
+              <BlueprintPartMarker x={265} y={478} part={markerById.brakesRearRight} active={isPartVisible(markerById.brakesRearRight, filter)} />
+              <BlueprintPartMarker x={395} y={410} part={markerById.brakesFrontLeft} active={isPartVisible(markerById.brakesFrontLeft, filter)} />
+              <BlueprintPartMarker x={395} y={478} part={markerById.brakesFrontRight} active={isPartVisible(markerById.brakesFrontRight, filter)} />
+
+              <path d="M718 416h142l36 42v116H682V458l36-42Z" />
+              <path d="M708 548h162" />
+              <path d="M724 454h130" />
+              <path d="M670 504h40m158 0h40" />
+              <BlueprintPartMarker x={705} y={530} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} />
+              <BlueprintPartMarker x={872} y={530} part={markerById.tireRearRight} active={isPartVisible(markerById.tireRearRight, filter)} />
+              <BlueprintPartMarker x={705} y={464} part={markerById.brakesRearLeft} active={isPartVisible(markerById.brakesRearLeft, filter)} />
+              <BlueprintPartMarker x={872} y={464} part={markerById.brakesRearRight} active={isPartVisible(markerById.brakesRearRight, filter)} />
+            </g>
+          </svg>
         </div>
 
         <div className="grid content-start gap-3">
@@ -1291,18 +1395,20 @@ function BlueprintWheel({
   part,
   active,
   small = false,
+  compact = false,
 }: {
   cx: number;
   cy: number;
   part?: BlueprintPart;
   active: boolean;
   small?: boolean;
+  compact?: boolean;
 }) {
-  const radius = small ? 38 : 58;
+  const radius = compact ? 34 : small ? 38 : 58;
   const color = part ? blueprintColor(part.percent) : "#22d3ee";
 
   return (
-    <g strokeWidth={small ? 2 : 3} opacity={active ? "0.98" : "0.16"} stroke={color}>
+    <g strokeWidth={small || compact ? 2 : 3} opacity={active ? "0.98" : "0.16"} stroke={color}>
       <circle cx={cx} cy={cy} r={radius} />
       <circle cx={cx} cy={cy} r={radius * 0.62} />
       <circle cx={cx} cy={cy} r={radius * 0.16} />
@@ -1312,7 +1418,7 @@ function BlueprintWheel({
         const y = cy + Math.sin(angle) * radius * 0.62;
         return <path key={index} d={`M${cx} ${cy} L${x.toFixed(1)} ${y.toFixed(1)}`} />;
       })}
-      {part ? (
+      {part && !compact ? (
         <text x={cx} y={cy + radius + 34} fill={color} stroke="none" textAnchor="middle" className="text-[28px] font-black">
           {part.percent}%
         </text>
@@ -1474,17 +1580,33 @@ function serviceVehicleLabel(service: ServiceRecord) {
   return `${vehicle.make} ${vehicle.model_line}${vehicle.model_year ? ` ${vehicle.model_year}` : ""} - ${vehicle.plate || vehicle.vin}`;
 }
 
-function getUpcomingServices(services: ServiceRecord[], dailyKm: number) {
+function getUpcomingServices(services: ServiceRecord[], vehicles: Vehicle[], dailyKm: number) {
   if (!dailyKm) {
     return [];
   }
 
-  return services
-    .filter((service) => getServiceInterval(service))
+  const vehicleById = new Map(vehicles.map((vehicle) => [vehicle.id, vehicle]));
+  const latestByVehicleAndType = new Map<string, ServiceRecord>();
+
+  services
+    .filter((service) => getServiceInterval(service) && service.mileage)
+    .forEach((service) => {
+      const key = `${service.vehicle_id}-${service.service_type}`;
+      const current = latestByVehicleAndType.get(key);
+
+      if (!current || Number(service.mileage ?? 0) > Number(current.mileage ?? 0)) {
+        latestByVehicleAndType.set(key, service);
+      }
+    });
+
+  return Array.from(latestByVehicleAndType.values())
     .map((service) => {
       const intervalKm = getServiceInterval(service);
-      const days = Math.ceil(intervalKm / dailyKm);
-      const date = new Date(`${service.service_date}T00:00:00`);
+      const currentMileage = vehicleById.get(service.vehicle_id)?.current_mileage ?? Number(service.mileage ?? 0);
+      const nextMileage = Number(service.mileage ?? 0) + intervalKm;
+      const remainingKm = Math.max(0, nextMileage - currentMileage);
+      const days = Math.ceil(remainingKm / dailyKm);
+      const date = remainingKm <= 0 ? new Date() : new Date(`${service.service_date}T00:00:00`);
       date.setDate(date.getDate() + days);
 
       return {
@@ -1494,7 +1616,8 @@ function getUpcomingServices(services: ServiceRecord[], dailyKm: number) {
         vehicle: serviceVehicleLabel(service),
         intervalKm,
         estimatedCost: service.estimated_cost ?? 0,
-        nextMileage: service.mileage ? service.mileage + intervalKm : null,
+        currentMileage,
+        nextMileage,
         estimatedDate: date.toISOString().slice(0, 10),
       };
     })
@@ -1505,9 +1628,9 @@ function getServiceInterval(service: ServiceRecord) {
   return service.recommended_interval_km ?? serviceIntervals[service.service_type] ?? 0;
 }
 
-function getServiceHealth(services: ServiceRecord[]) {
+function getServiceHealth(services: ServiceRecord[], vehicles: Vehicle[]) {
   const servicesWithMileage = services.filter((service) => service.mileage && getServiceInterval(service));
-  const currentMileage = Math.max(...servicesWithMileage.map((service) => Number(service.mileage ?? 0)), 0);
+  const vehicleById = new Map(vehicles.map((vehicle) => [vehicle.id, vehicle]));
   const latestByType = new Map<string, ServiceRecord>();
 
   servicesWithMileage.forEach((service) => {
@@ -1520,6 +1643,7 @@ function getServiceHealth(services: ServiceRecord[]) {
   return Array.from(latestByType.values())
     .map((service) => {
       const intervalKm = getServiceInterval(service);
+      const currentMileage = vehicleById.get(service.vehicle_id)?.current_mileage ?? Number(service.mileage ?? 0);
       const usedKm = Math.max(0, currentMileage - Number(service.mileage ?? 0));
       const remainingKm = Math.max(0, intervalKm - usedKm);
       const percent = intervalKm ? Math.max(0, Math.min(100, Math.round((remainingKm / intervalKm) * 100))) : 0;
@@ -1536,7 +1660,7 @@ function getServiceHealth(services: ServiceRecord[]) {
     .sort((a, b) => a.percent - b.percent);
 }
 
-function getBlueprintParts(items: ReturnType<typeof getServiceHealth>, services: ServiceRecord[]): BlueprintPart[] {
+function getBlueprintParts(items: ReturnType<typeof getServiceHealth>, services: ServiceRecord[], vehicles: Vehicle[]): BlueprintPart[] {
   const motor = getHealthPercent(items, "Servicio de Motor");
   const tires = getHealthPercent(items, "Servicio de Llantas");
   const brakes = getHealthPercent(items, "Servicio de Frenos");
@@ -1554,55 +1678,83 @@ function getBlueprintParts(items: ReturnType<typeof getServiceHealth>, services:
       id: "tireFrontLeft",
       group: "tires",
       label: "Llanta delantera izquierda",
-      percent: getPositionPercent(services, "Delantera izquierda", tires),
+      percent: getPositionPercent(services, vehicles, "Delantera izquierda", tires),
       description: "Basado en cambio de llantas por posicion.",
     },
     {
       id: "tireFrontRight",
       group: "tires",
       label: "Llanta delantera derecha",
-      percent: getPositionPercent(services, "Delantera derecha", tires),
+      percent: getPositionPercent(services, vehicles, "Delantera derecha", tires),
       description: "Basado en cambio de llantas por posicion.",
     },
     {
       id: "tireRearLeft",
       group: "tires",
       label: "Llanta trasera izquierda",
-      percent: getPositionPercent(services, "Trasera izquierda", tires),
+      percent: getPositionPercent(services, vehicles, "Trasera izquierda", tires),
       description: "Basado en cambio de llantas por posicion.",
     },
     {
       id: "tireRearRight",
       group: "tires",
       label: "Llanta trasera derecha",
-      percent: getPositionPercent(services, "Trasera derecha", tires),
+      percent: getPositionPercent(services, vehicles, "Trasera derecha", tires),
       description: "Basado en cambio de llantas por posicion.",
     },
     {
-      id: "brakesFront",
+      id: "brakesFrontLeft",
       group: "brakes",
-      label: "Frenos delanteros",
+      label: "Freno delantero izquierdo",
       percent: brakes,
       description: "Por ahora usa el porcentaje general del servicio de frenos.",
     },
     {
-      id: "brakesRear",
+      id: "brakesFrontRight",
       group: "brakes",
-      label: "Frenos traseros",
+      label: "Freno delantero derecho",
       percent: brakes,
       description: "Por ahora usa el porcentaje general del servicio de frenos.",
     },
     {
-      id: "suspensionFront",
+      id: "brakesRearLeft",
+      group: "brakes",
+      label: "Freno trasero izquierdo",
+      percent: brakes,
+      description: "Por ahora usa el porcentaje general del servicio de frenos.",
+    },
+    {
+      id: "brakesRearRight",
+      group: "brakes",
+      label: "Freno trasero derecho",
+      percent: brakes,
+      description: "Por ahora usa el porcentaje general del servicio de frenos.",
+    },
+    {
+      id: "suspensionFrontLeft",
       group: "suspension",
-      label: "Suspension delantera",
+      label: "Amortiguador delantero izquierdo",
       percent: suspension,
       description: "Por ahora usa el porcentaje general del servicio de suspension.",
     },
     {
-      id: "suspensionRear",
+      id: "suspensionFrontRight",
       group: "suspension",
-      label: "Suspension trasera",
+      label: "Amortiguador delantero derecho",
+      percent: suspension,
+      description: "Por ahora usa el porcentaje general del servicio de suspension.",
+    },
+    {
+      id: "suspensionRearLeft",
+      group: "suspension",
+      label: "Amortiguador trasero izquierdo",
+      percent: suspension,
+      description: "Por ahora usa el porcentaje general del servicio de suspension.",
+    },
+    {
+      id: "suspensionRearRight",
+      group: "suspension",
+      label: "Amortiguador trasero derecho",
       percent: suspension,
       description: "Por ahora usa el porcentaje general del servicio de suspension.",
     },
@@ -1613,9 +1765,9 @@ function getHealthPercent(items: ReturnType<typeof getServiceHealth>, serviceTyp
   return items.find((item) => item.serviceType === serviceType)?.percent ?? 0;
 }
 
-function getPositionPercent(services: ServiceRecord[], position: string, fallbackPercent: number) {
+function getPositionPercent(services: ServiceRecord[], vehicles: Vehicle[], position: string, fallbackPercent: number) {
   const tireServices = services.filter((service) => service.service_type === "Servicio de Llantas");
-  const currentMileage = Math.max(...services.map((service) => Number(service.mileage ?? 0)), 0);
+  const vehicleById = new Map(vehicles.map((vehicle) => [vehicle.id, vehicle]));
   const latestPositionService = tireServices
     .filter((service) => service.notes?.toLowerCase().includes(position.toLowerCase()))
     .sort((a, b) => Number(b.mileage ?? 0) - Number(a.mileage ?? 0))[0];
@@ -1625,6 +1777,7 @@ function getPositionPercent(services: ServiceRecord[], position: string, fallbac
   }
 
   const intervalKm = getServiceInterval(latestPositionService);
+  const currentMileage = vehicleById.get(latestPositionService.vehicle_id)?.current_mileage ?? Number(latestPositionService.mileage ?? 0);
   const usedKm = Math.max(0, currentMileage - Number(latestPositionService.mileage ?? 0));
   const remainingKm = Math.max(0, intervalKm - usedKm);
 
