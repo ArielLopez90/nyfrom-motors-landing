@@ -52,6 +52,13 @@ type ServiceRecord = {
 };
 
 type AppView = "dashboard" | "profile" | "vehicles" | "services" | "vehicle3d";
+type BlueprintPart = {
+  id: string;
+  group: string;
+  label: string;
+  percent: number;
+  description: string;
+};
 
 const serviceIntervals: Record<string, number> = {
   "Servicio de Motor": 7000,
@@ -789,7 +796,7 @@ export function NyfromMvp() {
       {activeView === "vehicle3d" ? (
         <section className="mb-5">
           <Panel eyebrow="Vista 3D" title="Blueprint del vehiculo">
-            <VehicleBlueprintView items={healthItems} />
+            <VehicleBlueprintView items={healthItems} services={services} />
           </Panel>
         </section>
       ) : null}
@@ -1184,73 +1191,118 @@ function ServiceHealthList({ items }: { items: ReturnType<typeof getServiceHealt
   );
 }
 
-function VehicleBlueprintView({ items }: { items: ReturnType<typeof getServiceHealth> }) {
-  const tires = items.find((item) => item.serviceType === "Servicio de Llantas")?.percent ?? 0;
-  const brakes = items.find((item) => item.serviceType === "Servicio de Frenos")?.percent ?? 0;
-  const suspension = items.find((item) => item.serviceType === "Servicio de Suspension")?.percent ?? 0;
-  const motor = items.find((item) => item.serviceType === "Servicio de Motor")?.percent ?? 0;
+function VehicleBlueprintView({
+  items,
+  services,
+}: {
+  items: ReturnType<typeof getServiceHealth>;
+  services: ServiceRecord[];
+}) {
+  const [filter, setFilter] = useState("all");
+  const parts = getBlueprintParts(items, services);
+  const visibleParts = parts.filter((part) => filter === "all" || part.group === filter);
+  const markerById = Object.fromEntries(parts.map((part) => [part.id, part])) as Record<string, BlueprintPart>;
 
   return (
     <div className="grid gap-5">
-      <div className="relative min-h-[620px] overflow-hidden rounded-lg border border-cyan-300/20 bg-black shadow-2xl shadow-cyan-950/40">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(14,165,233,0.18),transparent_45%)]" />
-        <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(34,211,238,0.22)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.22)_1px,transparent_1px)] [background-size:28px_28px]" />
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <label className="grid gap-2 text-sm font-bold text-zinc-200">
+          Ver componentes
+          <select
+            className="min-h-12 min-w-64 rounded-lg border border-white/12 bg-black/25 px-4 text-white outline-none focus:border-cyan-300"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+          >
+            <option value="all">Todo el vehiculo</option>
+            <option value="motor">Motor</option>
+            <option value="tires">Llantas</option>
+            <option value="brakes">Frenos</option>
+            <option value="suspension">Suspension</option>
+          </select>
+        </label>
+        <p className="max-w-xl text-sm font-bold text-zinc-400">
+          Cada punto muestra vida estimada por componente. Si aun no existe registro por posicion, la app usa el
+          porcentaje general de ese servicio.
+        </p>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+        <div className="relative min-h-[640px] overflow-hidden rounded-lg border border-cyan-300/20 bg-black shadow-2xl shadow-cyan-950/40">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(14,165,233,0.18),transparent_48%)]" />
+          <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(34,211,238,0.22)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.22)_1px,transparent_1px)] [background-size:30px_30px]" />
         <svg
-          className="absolute inset-x-0 top-16 mx-auto h-[430px] w-[min(980px,94%)] text-cyan-300 drop-shadow-[0_0_18px_rgba(34,211,238,0.75)]"
+          className="absolute inset-x-0 top-20 mx-auto h-[470px] w-[min(1080px,96%)] text-cyan-300 drop-shadow-[0_0_18px_rgba(34,211,238,0.75)]"
           fill="none"
           stroke="currentColor"
           strokeLinecap="round"
           strokeLinejoin="round"
-          viewBox="0 0 980 430"
+          viewBox="0 0 1100 520"
         >
-          <g opacity="0.9" strokeWidth="3">
-            <path d="M118 252c26-74 88-126 169-150 136-40 323-37 463 4 69 20 121 66 146 129 10 24 3 50-24 58-122 36-277 48-431 40-132-7-240-28-316-59-12-5-12-12-7-22Z" />
-            <path d="M195 229c40-67 122-107 236-120 119-13 262-2 365 45" />
-            <path d="M293 128l61 97h245l71-89" />
-            <path d="M354 225l-28 94" />
-            <path d="M599 225l26 104" />
-            <path d="M156 264h707" />
-            <path d="M255 313c114 28 346 38 510 3" />
-            <path d="M414 161v62" />
-            <path d="M535 156v68" />
+          <g opacity="0.95" strokeWidth="4">
+            <path d="M95 353c22-74 82-102 154-111 58-92 148-144 265-157 160-18 318 13 436 81 56 32 98 87 119 156 9 29-3 48-36 57-70 20-141 32-212 39-18-69-71-113-139-113-71 0-124 47-138 119H358c-15-71-69-118-139-118-65 0-116 42-136 105-58-12-74-25-62-58Z" />
+            <path d="M247 242c82-74 187-112 314-114 153-3 284 39 393 126" />
+            <path d="M306 247h554c43 0 81 25 102 64" />
+            <path d="M125 352h865" />
+            <path d="M373 246l-45 159" />
+            <path d="M541 129l-4 119" />
+            <path d="M719 147l-72 101" />
+            <path d="M647 248l28 170" />
+            <path d="M386 332h252l56 64H332l54-64Z" />
+            <path d="M455 269h120l42 45-36 40H452l-38-41 41-44Z" />
           </g>
-          <g opacity="0.7" strokeWidth="1.5">
-            {Array.from({ length: 18 }).map((_, index) => (
-              <path key={`body-line-${index}`} d={`M${170 + index * 36} ${118 + (index % 4) * 18} C${250 + index * 28} ${230 + (index % 5) * 12}, ${440 + index * 16} ${290 - (index % 6) * 10}, ${810 - index * 18} ${260 + (index % 3) * 14}`} />
+          <g opacity="0.55" strokeWidth="1.4">
+            {Array.from({ length: 15 }).map((_, index) => (
+              <path
+                key={`body-line-${index}`}
+                d={`M${170 + index * 54} 246 C${230 + index * 38} ${150 + (index % 4) * 22}, ${545 + index * 13} ${125 + (index % 5) * 18}, ${925 - index * 24} 330`}
+              />
             ))}
-            {Array.from({ length: 12 }).map((_, index) => (
-              <path key={`cross-line-${index}`} d={`M${210 + index * 48} 112 L${270 + index * 36} 325`} />
+            {Array.from({ length: 13 }).map((_, index) => (
+              <path key={`cross-line-${index}`} d={`M${270 + index * 54} 142 L${236 + index * 50} 414`} />
             ))}
           </g>
-          <BlueprintWheel cx={206} cy={305} />
-          <BlueprintWheel cx={760} cy={305} />
-          <BlueprintWheel cx={286} cy={144} small />
-          <BlueprintWheel cx={696} cy={146} small />
-          <g strokeWidth="2" opacity="0.85">
-            <path d="M430 248h120l34 38-34 38H430l-34-38 34-38Z" />
-            <path d="M451 262h78" />
-            <path d="M451 284h92" />
-            <path d="M451 306h70" />
-          </g>
+
+          <BlueprintWheel cx={219} cy={412} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} />
+          <BlueprintWheel cx={684} cy={412} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} />
+          <BlueprintWheel cx={292} cy={257} part={markerById.tireRearRight} active={isPartVisible(markerById.tireRearRight, filter)} small />
+          <BlueprintWheel cx={760} cy={259} part={markerById.tireFrontRight} active={isPartVisible(markerById.tireFrontRight, filter)} small />
+
+          <BlueprintPartMarker x={512} y={310} part={markerById.motor} active={isPartVisible(markerById.motor, filter)} />
+          <BlueprintPartMarker x={700} y={330} part={markerById.brakesFront} active={isPartVisible(markerById.brakesFront, filter)} />
+          <BlueprintPartMarker x={202} y={330} part={markerById.brakesRear} active={isPartVisible(markerById.brakesRear, filter)} />
+          <BlueprintPartMarker x={784} y={365} part={markerById.suspensionFront} active={isPartVisible(markerById.suspensionFront, filter)} />
+          <BlueprintPartMarker x={360} y={365} part={markerById.suspensionRear} active={isPartVisible(markerById.suspensionRear, filter)} />
         </svg>
-        <BlueprintStat label="Motor" value={motor} className="left-6 top-6" />
-        <BlueprintStat label="Llantas" value={tires} className="right-6 top-6" />
-        <BlueprintStat label="Frenos" value={brakes} className="left-6 bottom-6" />
-        <BlueprintStat label="Suspension" value={suspension} className="right-6 bottom-6" />
+        </div>
+
+        <div className="grid content-start gap-3">
+          {visibleParts.map((part) => (
+            <BlueprintStat key={part.id} part={part} />
+          ))}
+        </div>
       </div>
-      <p className="text-sm font-bold text-zinc-400">
-        Vista blueprint inicial: por ahora resume vida por sistema. El siguiente paso seria guardar componentes
-        especificos por posicion, como amortiguador izquierdo, frenos delanteros o cada llanta individual.
-      </p>
     </div>
   );
 }
 
-function BlueprintWheel({ cx, cy, small = false }: { cx: number; cy: number; small?: boolean }) {
+function BlueprintWheel({
+  cx,
+  cy,
+  part,
+  active,
+  small = false,
+}: {
+  cx: number;
+  cy: number;
+  part?: BlueprintPart;
+  active: boolean;
+  small?: boolean;
+}) {
   const radius = small ? 38 : 58;
+  const color = part ? blueprintColor(part.percent) : "#22d3ee";
 
   return (
-    <g strokeWidth={small ? 2 : 3} opacity="0.9">
+    <g strokeWidth={small ? 2 : 3} opacity={active ? "0.98" : "0.16"} stroke={color}>
       <circle cx={cx} cy={cy} r={radius} />
       <circle cx={cx} cy={cy} r={radius * 0.62} />
       <circle cx={cx} cy={cy} r={radius * 0.16} />
@@ -1260,23 +1312,47 @@ function BlueprintWheel({ cx, cy, small = false }: { cx: number; cy: number; sma
         const y = cy + Math.sin(angle) * radius * 0.62;
         return <path key={index} d={`M${cx} ${cy} L${x.toFixed(1)} ${y.toFixed(1)}`} />;
       })}
+      {part ? (
+        <text x={cx} y={cy + radius + 34} fill={color} stroke="none" textAnchor="middle" className="text-[28px] font-black">
+          {part.percent}%
+        </text>
+      ) : null}
     </g>
   );
 }
 
-function BlueprintStat({ label, value, className }: { label: string; value: number; className: string }) {
-  const tone = getHealthTone(value);
+function BlueprintPartMarker({ x, y, part, active }: { x: number; y: number; part?: BlueprintPart; active: boolean }) {
+  if (!part) {
+    return null;
+  }
+
+  const color = blueprintColor(part.percent);
 
   return (
-    <div className={`absolute w-44 rounded-lg border border-cyan-300/30 bg-black/70 p-4 shadow-xl shadow-cyan-950/40 backdrop-blur ${className}`}>
+    <g opacity={active ? "1" : "0.16"} stroke={color} fill="none">
+      <circle cx={x} cy={y} r="22" strokeWidth="4" />
+      <circle cx={x} cy={y} r="8" fill={color} stroke="none" />
+      <text x={x} y={y - 34} fill={color} stroke="none" textAnchor="middle" className="text-[24px] font-black">
+        {part.percent}%
+      </text>
+    </g>
+  );
+}
+
+function BlueprintStat({ part }: { part: BlueprintPart }) {
+  const tone = getHealthTone(part.percent);
+
+  return (
+    <article className="rounded-lg border border-cyan-300/20 bg-black/35 p-4">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="text-xs font-black uppercase text-cyan-200">{label}</span>
-        <strong className={tone.textColor}>{value}%</strong>
+        <span className="text-xs font-black uppercase text-cyan-200">{part.label}</span>
+        <strong className={tone.textColor}>{part.percent}%</strong>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-cyan-950/70">
-        <div className={`h-full ${tone.barColor}`} style={{ width: `${value}%` }} />
+        <div className={`h-full ${tone.barColor}`} style={{ width: `${part.percent}%` }} />
       </div>
-    </div>
+      <p className="mt-2 text-xs font-bold text-zinc-500">{part.description}</p>
+    </article>
   );
 }
 
@@ -1458,6 +1534,117 @@ function getServiceHealth(services: ServiceRecord[]) {
       };
     })
     .sort((a, b) => a.percent - b.percent);
+}
+
+function getBlueprintParts(items: ReturnType<typeof getServiceHealth>, services: ServiceRecord[]): BlueprintPart[] {
+  const motor = getHealthPercent(items, "Servicio de Motor");
+  const tires = getHealthPercent(items, "Servicio de Llantas");
+  const brakes = getHealthPercent(items, "Servicio de Frenos");
+  const suspension = getHealthPercent(items, "Servicio de Suspension");
+
+  return [
+    {
+      id: "motor",
+      group: "motor",
+      label: "Motor",
+      percent: motor,
+      description: "Vida estimada segun el ultimo servicio de motor.",
+    },
+    {
+      id: "tireFrontLeft",
+      group: "tires",
+      label: "Llanta delantera izquierda",
+      percent: getPositionPercent(services, "Delantera izquierda", tires),
+      description: "Basado en cambio de llantas por posicion.",
+    },
+    {
+      id: "tireFrontRight",
+      group: "tires",
+      label: "Llanta delantera derecha",
+      percent: getPositionPercent(services, "Delantera derecha", tires),
+      description: "Basado en cambio de llantas por posicion.",
+    },
+    {
+      id: "tireRearLeft",
+      group: "tires",
+      label: "Llanta trasera izquierda",
+      percent: getPositionPercent(services, "Trasera izquierda", tires),
+      description: "Basado en cambio de llantas por posicion.",
+    },
+    {
+      id: "tireRearRight",
+      group: "tires",
+      label: "Llanta trasera derecha",
+      percent: getPositionPercent(services, "Trasera derecha", tires),
+      description: "Basado en cambio de llantas por posicion.",
+    },
+    {
+      id: "brakesFront",
+      group: "brakes",
+      label: "Frenos delanteros",
+      percent: brakes,
+      description: "Por ahora usa el porcentaje general del servicio de frenos.",
+    },
+    {
+      id: "brakesRear",
+      group: "brakes",
+      label: "Frenos traseros",
+      percent: brakes,
+      description: "Por ahora usa el porcentaje general del servicio de frenos.",
+    },
+    {
+      id: "suspensionFront",
+      group: "suspension",
+      label: "Suspension delantera",
+      percent: suspension,
+      description: "Por ahora usa el porcentaje general del servicio de suspension.",
+    },
+    {
+      id: "suspensionRear",
+      group: "suspension",
+      label: "Suspension trasera",
+      percent: suspension,
+      description: "Por ahora usa el porcentaje general del servicio de suspension.",
+    },
+  ];
+}
+
+function getHealthPercent(items: ReturnType<typeof getServiceHealth>, serviceType: string) {
+  return items.find((item) => item.serviceType === serviceType)?.percent ?? 0;
+}
+
+function getPositionPercent(services: ServiceRecord[], position: string, fallbackPercent: number) {
+  const tireServices = services.filter((service) => service.service_type === "Servicio de Llantas");
+  const currentMileage = Math.max(...services.map((service) => Number(service.mileage ?? 0)), 0);
+  const latestPositionService = tireServices
+    .filter((service) => service.notes?.toLowerCase().includes(position.toLowerCase()))
+    .sort((a, b) => Number(b.mileage ?? 0) - Number(a.mileage ?? 0))[0];
+
+  if (!latestPositionService) {
+    return fallbackPercent;
+  }
+
+  const intervalKm = getServiceInterval(latestPositionService);
+  const usedKm = Math.max(0, currentMileage - Number(latestPositionService.mileage ?? 0));
+  const remainingKm = Math.max(0, intervalKm - usedKm);
+
+  return intervalKm ? Math.max(0, Math.min(100, Math.round((remainingKm / intervalKm) * 100))) : fallbackPercent;
+}
+
+function isPartVisible(part: BlueprintPart | undefined, filter: string) {
+  return Boolean(part && (filter === "all" || part.group === filter));
+}
+
+function blueprintColor(percent: number) {
+  if (percent <= 35) {
+    return "#fb7185";
+  }
+
+  if (percent <= 65) {
+    return "#facc15";
+  }
+
+  return "#34d399";
 }
 
 function getHealthTone(percent: number) {
