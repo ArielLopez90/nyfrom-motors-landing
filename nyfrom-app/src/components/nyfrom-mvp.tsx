@@ -1367,53 +1367,67 @@ function VehicleBlueprintView({
           >
             <g opacity="0.95" strokeWidth="2.4">
               <text x="42" y="36" fill="currentColor" stroke="none" className="text-[22px] font-black">Lateral</text>
-              <path d="M55 214h502l20-58-54-20-63-64H232c-66 0-119 25-158 77l-19 65Z" />
-              <path d="M126 145c40-39 84-57 137-57h176l52 50" />
-              <path d="M77 190h480" />
-              <BlueprintWheel cx={155} cy={234} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} compact />
-              <BlueprintWheel cx={442} cy={234} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} compact />
-              <BlueprintPartMarker x={492} y={178} part={markerById.motor} active={isPartVisible(markerById.motor, filter)} />
+              <path d="M54 218h52c8-46 41-73 87-73 42 0 75 25 87 67h166c10-42 43-67 86-67 42 0 73 24 86 66h31l14-58-42-15-69-72H256c-72 0-126 26-165 83l-32 12-5 57Z" />
+              <path d="M151 141c39-46 85-66 146-66h179l64 66" />
+              <path d="M258 76l-28 66" />
+              <path d="M357 76v67" />
+              <path d="M474 79l34 63" />
+              <path d="M72 181h560" />
+              <path d="M303 150h109v58H303z" />
+              <path d="M180 152l26 34m344-22h41" />
+              <BlueprintWheel cx={193} cy={218} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} compact />
+              <BlueprintWheel cx={531} cy={218} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} compact />
+              <BlueprintPartMarker x={570} y={170} part={markerById.motor} active={isPartVisible(markerById.motor, filter)} />
 
               <text x="710" y="36" fill="currentColor" stroke="none" className="text-[22px] font-black">Frente</text>
-              <rect x="705" y="75" width="250" height="190" rx="24" />
-              <path d="M730 122h200" />
-              <path d="M750 164h160" />
-              <path d="M770 212h120" />
-              <path d="M690 170h-30m310 0h-30" />
-              <BlueprintPartMarker x={740} y={246} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} />
-              <BlueprintPartMarker x={920} y={246} part={markerById.tireFrontRight} active={isPartVisible(markerById.tireFrontRight, filter)} />
-              <BlueprintPartMarker x={740} y={115} part={markerById.brakesFrontLeft} active={isPartVisible(markerById.brakesFrontLeft, filter)} />
-              <BlueprintPartMarker x={920} y={115} part={markerById.brakesFrontRight} active={isPartVisible(markerById.brakesFrontRight, filter)} />
+              <path d="M704 257h253l15-38-9-86-36-57H735l-36 57-9 86 14 38Z" />
+              <path d="M738 86h187l22 48H716l22-48Z" />
+              <path d="M736 154h190l-12 52H748l-12-52Z" />
+              <path d="M766 177h130" />
+              <path d="M730 218h205" />
+              <path d="M694 162h-42m314 0h42" />
+              <circle cx="733" cy="203" r="18" />
+              <circle cx="927" cy="203" r="18" />
+              <BlueprintPartMarker x={716} y={255} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} />
+              <BlueprintPartMarker x={944} y={255} part={markerById.tireFrontRight} active={isPartVisible(markerById.tireFrontRight, filter)} />
+              <BlueprintPartMarker x={760} y={235} part={markerById.brakesFrontLeft} active={isPartVisible(markerById.brakesFrontLeft, filter)} />
+              <BlueprintPartMarker x={900} y={235} part={markerById.brakesFrontRight} active={isPartVisible(markerById.brakesFrontRight, filter)} />
 
               <text x="42" y="330" fill="currentColor" stroke="none" className="text-[22px] font-black">Planta</text>
-              <rect x="96" y="365" width="470" height="165" rx="82" />
-              <path d="M156 395h350" />
-              <path d="M156 500h350" />
-              <path d="M260 370v155" />
-              <path d="M452 370v155" />
-              <BlueprintPartMarker x={505} y={448} part={markerById.motor} active={isPartVisible(markerById.motor, filter)} />
-              <BlueprintPartMarker x={145} y={397} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} />
-              <BlueprintPartMarker x={145} y={498} part={markerById.tireRearRight} active={isPartVisible(markerById.tireRearRight, filter)} />
-              <BlueprintPartMarker x={535} y={397} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} />
-              <BlueprintPartMarker x={535} y={498} part={markerById.tireFrontRight} active={isPartVisible(markerById.tireFrontRight, filter)} />
-              <BlueprintPartMarker x={205} y={397} part={markerById.suspensionRearLeft} active={isPartVisible(markerById.suspensionRearLeft, filter)} />
-              <BlueprintPartMarker x={205} y={498} part={markerById.suspensionRearRight} active={isPartVisible(markerById.suspensionRearRight, filter)} />
-              <BlueprintPartMarker x={475} y={397} part={markerById.suspensionFrontLeft} active={isPartVisible(markerById.suspensionFrontLeft, filter)} />
-              <BlueprintPartMarker x={475} y={498} part={markerById.suspensionFrontRight} active={isPartVisible(markerById.suspensionFrontRight, filter)} />
-              <BlueprintPartMarker x={260} y={397} part={markerById.brakesRearLeft} active={isPartVisible(markerById.brakesRearLeft, filter)} />
-              <BlueprintPartMarker x={260} y={498} part={markerById.brakesRearRight} active={isPartVisible(markerById.brakesRearRight, filter)} />
-              <BlueprintPartMarker x={415} y={397} part={markerById.brakesFrontLeft} active={isPartVisible(markerById.brakesFrontLeft, filter)} />
-              <BlueprintPartMarker x={415} y={498} part={markerById.brakesFrontRight} active={isPartVisible(markerById.brakesFrontRight, filter)} />
+              <path d="M72 443c0-48 28-82 73-98h420c48 16 73 50 73 98s-25 82-73 98H145c-45-16-73-50-73-98Z" />
+              <path d="M112 384h48v118h-48" />
+              <path d="M552 384h48v118h-48" />
+              <path d="M186 370h110l18 42v63l-18 42H186" />
+              <path d="M421 370H311l-18 42v63l18 42h110" />
+              <rect x="322" y="410" width="68" height="68" rx="10" />
+              <path d="M82 422h55m0 42H82" />
+              <path d="M573 422h55m-55 42h55" />
+              <BlueprintPartMarker x={570} y={443} part={markerById.motor} active={isPartVisible(markerById.motor, filter)} />
+              <BlueprintPartMarker x={120} y={390} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} />
+              <BlueprintPartMarker x={120} y={496} part={markerById.tireRearRight} active={isPartVisible(markerById.tireRearRight, filter)} />
+              <BlueprintPartMarker x={594} y={390} part={markerById.tireFrontLeft} active={isPartVisible(markerById.tireFrontLeft, filter)} />
+              <BlueprintPartMarker x={594} y={496} part={markerById.tireFrontRight} active={isPartVisible(markerById.tireFrontRight, filter)} />
+              <BlueprintPartMarker x={190} y={390} part={markerById.suspensionRearLeft} active={isPartVisible(markerById.suspensionRearLeft, filter)} />
+              <BlueprintPartMarker x={190} y={496} part={markerById.suspensionRearRight} active={isPartVisible(markerById.suspensionRearRight, filter)} />
+              <BlueprintPartMarker x={510} y={390} part={markerById.suspensionFrontLeft} active={isPartVisible(markerById.suspensionFrontLeft, filter)} />
+              <BlueprintPartMarker x={510} y={496} part={markerById.suspensionFrontRight} active={isPartVisible(markerById.suspensionFrontRight, filter)} />
+              <BlueprintPartMarker x={252} y={390} part={markerById.brakesRearLeft} active={isPartVisible(markerById.brakesRearLeft, filter)} />
+              <BlueprintPartMarker x={252} y={496} part={markerById.brakesRearRight} active={isPartVisible(markerById.brakesRearRight, filter)} />
+              <BlueprintPartMarker x={450} y={390} part={markerById.brakesFrontLeft} active={isPartVisible(markerById.brakesFrontLeft, filter)} />
+              <BlueprintPartMarker x={450} y={496} part={markerById.brakesFrontRight} active={isPartVisible(markerById.brakesFrontRight, filter)} />
 
               <text x="710" y="330" fill="currentColor" stroke="none" className="text-[22px] font-black">Posterior</text>
-              <rect x="705" y="365" width="250" height="180" rx="22" />
-              <path d="M730 505h200" />
-              <path d="M750 410h160" />
-              <path d="M690 480h-30m310 0h-30" />
-              <BlueprintPartMarker x={740} y={525} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} />
-              <BlueprintPartMarker x={920} y={525} part={markerById.tireRearRight} active={isPartVisible(markerById.tireRearRight, filter)} />
-              <BlueprintPartMarker x={740} y={410} part={markerById.brakesRearLeft} active={isPartVisible(markerById.brakesRearLeft, filter)} />
-              <BlueprintPartMarker x={920} y={410} part={markerById.brakesRearRight} active={isPartVisible(markerById.brakesRearRight, filter)} />
+              <path d="M704 552h253l13-38-8-82-35-57H735l-35 57-8 82 12 38Z" />
+              <path d="M738 385h187l21 48H717l21-48Z" />
+              <path d="M748 454h166v42H748z" />
+              <path d="M724 514h212" />
+              <path d="M694 458h-42m314 0h42" />
+              <circle cx="731" cy="484" r="14" />
+              <circle cx="929" cy="484" r="14" />
+              <BlueprintPartMarker x={716} y={552} part={markerById.tireRearLeft} active={isPartVisible(markerById.tireRearLeft, filter)} />
+              <BlueprintPartMarker x={944} y={552} part={markerById.tireRearRight} active={isPartVisible(markerById.tireRearRight, filter)} />
+              <BlueprintPartMarker x={760} y={525} part={markerById.brakesRearLeft} active={isPartVisible(markerById.brakesRearLeft, filter)} />
+              <BlueprintPartMarker x={900} y={525} part={markerById.brakesRearRight} active={isPartVisible(markerById.brakesRearRight, filter)} />
             </g>
           </svg>
         </div>
