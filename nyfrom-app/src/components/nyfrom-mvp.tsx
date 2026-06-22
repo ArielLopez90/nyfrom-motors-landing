@@ -51,7 +51,7 @@ type ServiceRecord = {
   } | null;
 };
 
-type AppView = "dashboard" | "profile" | "vehicles" | "services" | "history";
+type AppView = "dashboard" | "profile" | "vehicles" | "services";
 
 const serviceIntervals: Record<string, number> = {
   "Servicio de Motor": 7000,
@@ -62,8 +62,8 @@ const serviceIntervals: Record<string, number> = {
   "Servicio de Direccion": 20000,
   "Servicio Electrico": 12000,
   "Servicio de Aire Acondicionado": 12000,
-  "Servicio de Llantas": 10000,
-  "Alineacion y Balanceo": 10000,
+  "Servicio de Llantas": 50000,
+  "Alineacion y Balanceo": 5000,
   "Diagnostico General": 10000,
   "Escaneo Computarizado": 10000,
   "Revision Pre-compra": 0,
@@ -149,6 +149,7 @@ export function NyfromMvp() {
     historyVehicleId === "all"
       ? upcomingServices
       : upcomingServices.filter((service) => service.vehicleId === historyVehicleId);
+  const healthItems = getServiceHealth(services);
   const nextMonthCost = getNextMonthEstimatedCost(upcomingServices);
   const annualCost = getAnnualServiceCost(services);
 
@@ -321,29 +322,46 @@ export function NyfromMvp() {
     const form = event.currentTarget;
     const formData = new FormData(form);
     const serviceType = String(formData.get("service_type") ?? "");
+    const tirePositions = formData.getAll("tire_positions").map(String);
+    const hadBalancing = String(formData.get("tire_balancing") ?? "no") === "yes";
+    const tireInterval = parseOptionalNumber(formData.get("tire_interval_km"));
+    const balanceInterval = parseOptionalNumber(formData.get("balance_interval_km"));
+    const rawNotes = String(formData.get("notes") ?? "").trim();
     const interval =
       parseOptionalNumber(formData.get("recommended_interval_km")) ??
       serviceIntervals[serviceType] ??
       null;
+    const notes = [
+      rawNotes,
+      serviceType === "Servicio de Llantas" && tirePositions.length ? `Llantas cambiadas: ${tirePositions.join(", ")}` : "",
+      serviceType === "Servicio de Llantas" ? `Balanceo: ${hadBalancing ? "Si" : "No"}` : "",
+    ].filter(Boolean).join(" | ");
     const payload = {
       user_id: user.id,
       vehicle_id: String(formData.get("vehicle_id") ?? ""),
       service_type: serviceType,
       service_date: String(formData.get("service_date") ?? ""),
       mileage: parseOptionalNumber(formData.get("mileage")),
-      recommended_interval_km: interval,
+      recommended_interval_km: serviceType === "Servicio de Llantas" ? tireInterval ?? 50000 : interval,
       estimated_cost: parseOptionalNumber(formData.get("estimated_cost")),
-      notes: String(formData.get("notes") ?? "").trim(),
+      notes,
     };
 
-    const request = editingService
-      ? supabase.from("service_records").update(payload).eq("id", editingService.id)
-      : supabase.from("service_records").insert(payload);
+    const extraBalancingPayload = serviceType === "Servicio de Llantas" && hadBalancing && !editingService
+      ? {
+          ...payload,
+          service_type: "Alineacion y Balanceo",
+          recommended_interval_km: balanceInterval ?? 5000,
+          notes: [rawNotes, "Balanceo de llantas"].filter(Boolean).join(" | "),
+        }
+      : null;
 
-    const { error } = await request;
+    const result = editingService
+      ? await supabase.from("service_records").update(payload).eq("id", editingService.id)
+      : await supabase.from("service_records").insert(extraBalancingPayload ? [payload, extraBalancingPayload] : payload);
 
-    if (error) {
-      setStatus(`No se pudo guardar servicio: ${error.message}`);
+    if (result.error) {
+      setStatus(`No se pudo guardar servicio: ${result.error.message}`);
       return;
     }
 
@@ -468,7 +486,7 @@ export function NyfromMvp() {
         <ProfileSummary profile={profile} userEmail={user.email ?? ""} dailyKm={dailyKm} onEdit={() => setActiveView("profile")} />
       </section>
 
-      <section className="mb-5 grid gap-2 rounded-lg border border-white/12 bg-[#1d2024] p-2 shadow-xl shadow-black/20 md:grid-cols-5">
+      <section className="mb-5 grid gap-2 rounded-lg border border-white/12 bg-[#1d2024] p-2 shadow-xl shadow-black/20 md:grid-cols-4">
         <TabButton active={activeView === "dashboard"} onClick={() => setActiveView("dashboard")}>
           Dashboard
         </TabButton>
@@ -480,9 +498,6 @@ export function NyfromMvp() {
         </TabButton>
         <TabButton active={activeView === "services"} onClick={() => setActiveView("services")}>
           Servicios
-        </TabButton>
-        <TabButton active={activeView === "history"} onClick={() => setActiveView("history")}>
-          Historial
         </TabButton>
       </section>
 
@@ -558,7 +573,7 @@ export function NyfromMvp() {
       </section>
 
       <section className={activeView === "services" ? "mb-5" : "hidden"}>
-        <Panel eyebrow="Historial" title={editingService ? "Editar servicio" : "Registrar servicio"} id="servicio-form">
+        <Panel eyebrow="Servicio" title={editingService ? "Editar servicio" : "Registrar servicio"} id="servicio-form">
           <form className="grid gap-4" onSubmit={saveService} key={`${editingService?.id ?? "new-service"}-${selectedServiceVehicleId}`}>
             <SelectField
               label="Vehiculo"
@@ -603,6 +618,27 @@ export function NyfromMvp() {
                 defaultValue={editingService?.recommended_interval_km ?? serviceIntervals[selectedServiceType] ?? ""}
               />
             </div>
+            {selectedServiceType === "Servicio de Llantas" ? (
+              <div className="grid gap-4 rounded-lg border border-white/12 bg-white/5 p-4 md:grid-cols-2">
+                <fieldset className="grid gap-2 text-sm font-bold text-zinc-200">
+                  <legend>Llantas cambiadas</legend>
+                  {["Delantera izquierda", "Delantera derecha", "Trasera izquierda", "Trasera derecha"].map((position) => (
+                    <label key={position} className="flex items-center gap-2 font-bold text-zinc-300">
+                      <input className="h-4 w-4 accent-red-600" type="checkbox" name="tire_positions" value={position} />
+                      {position}
+                    </label>
+                  ))}
+                </fieldset>
+                <div className="grid gap-4">
+                  <SelectField label="Incluyo balanceo" name="tire_balancing" defaultValue="no">
+                    <option value="no">No</option>
+                    <option value="yes">Si</option>
+                  </SelectField>
+                  <TextField label="Proximo balanceo (km)" name="balance_interval_km" type="number" min={0} defaultValue={5000} />
+                  <TextField label="Proximo cambio de llantas (km)" name="tire_interval_km" type="number" min={0} defaultValue={50000} />
+                </div>
+              </div>
+            ) : null}
             <label className="grid gap-2 text-sm font-bold text-zinc-200">
               Notas
               <textarea
@@ -630,8 +666,17 @@ export function NyfromMvp() {
         </>
       ) : null}
 
-      {activeView === "dashboard" || activeView === "history" ? (
+      {activeView === "dashboard" ? (
         <>
+      <section className="mb-5 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+        <Panel eyebrow="Estado" title="Vida util por servicio">
+          <ServiceHealthList items={healthItems} />
+        </Panel>
+        <Panel eyebrow="Vista del vehiculo" title="Partes monitoreadas">
+          <VehiclePartsView items={healthItems} />
+        </Panel>
+      </section>
+
       <section className="mb-5 grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
         <Panel eyebrow="Proximo servicio" title="🧰 Proximo servicio" id="proximos-servicios">
           <div className="mb-4">
@@ -650,9 +695,11 @@ export function NyfromMvp() {
                   <span>
                     Proximo kilometraje: {item.nextMileage ? `${item.nextMileage.toLocaleString("es-GT")} km` : "No ingresado"}
                   </span>
-                  <span>Fecha estimada: {formatDate(item.estimatedDate)}</span>
                   <span>Costo estimado: {formatMoney(item.estimatedCost)}</span>
                   <span>Base: {item.intervalKm.toLocaleString("es-GT")} km / {dailyKm.toFixed(1)} km diarios</span>
+                  <strong className="mt-3 block rounded-lg border border-red-400/40 bg-red-950/30 p-3 text-lg text-red-200">
+                    Fecha estimada: {formatDate(item.estimatedDate)}
+                  </strong>
                 </RecordCard>
               ))
             ) : (
@@ -983,11 +1030,6 @@ function StepBanner({ activeView, hasVehicle }: { activeView: AppView; hasVehicl
         ? "Selecciona un vehiculo, registra el servicio y Auto Hub calculara proximas recomendaciones."
         : "Ve a Vehiculos para guardar tu primer registro antes de crear servicios.",
     },
-    history: {
-      eyebrow: "Historial",
-      title: "Consulta servicios y recomendaciones",
-      body: "Filtra por vehiculo para revisar su historial y proximos servicios recomendados.",
-    },
   };
 
   const item = copy[activeView];
@@ -1102,6 +1144,68 @@ function RecordCard({ children }: { children: React.ReactNode }) {
 
 function EmptyState({ text }: { text: string }) {
   return <p className="rounded-lg border border-white/12 bg-white/5 p-4 text-zinc-400">{text}</p>;
+}
+
+function ServiceHealthList({ items }: { items: ReturnType<typeof getServiceHealth> }) {
+  if (!items.length) {
+    return <EmptyState text="Registra servicios con kilometraje para ver vida util por servicio." />;
+  }
+
+  return (
+    <div className="grid gap-3">
+      {items.map((item) => (
+        <article key={item.serviceType} className="rounded-lg border border-white/12 bg-white/5 p-4">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <strong>{item.serviceType}</strong>
+            <span className={`font-black ${item.textColor}`}>{item.percent}%</span>
+          </div>
+          <div className="h-3 overflow-hidden rounded-full bg-black/40">
+            <div className={`h-full rounded-full ${item.barColor}`} style={{ width: `${item.percent}%` }} />
+          </div>
+          <p className="mt-2 text-sm font-bold text-zinc-400">
+            Restante: {item.remainingKm.toLocaleString("es-GT")} km de {item.intervalKm.toLocaleString("es-GT")} km
+          </p>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function VehiclePartsView({ items }: { items: ReturnType<typeof getServiceHealth> }) {
+  const tires = items.find((item) => item.serviceType === "Servicio de Llantas")?.percent ?? 0;
+  const brakes = items.find((item) => item.serviceType === "Servicio de Frenos")?.percent ?? 0;
+  const suspension = items.find((item) => item.serviceType === "Servicio de Suspension")?.percent ?? 0;
+
+  return (
+    <div className="grid gap-4">
+      <div className="relative mx-auto h-56 w-full max-w-xl rounded-lg border border-white/12 bg-black/20 p-6">
+        <div className="absolute left-1/2 top-8 h-40 w-56 -translate-x-1/2 rounded-[42px] border-2 border-zinc-500/80 bg-white/5 shadow-2xl shadow-black/30" />
+        <VehiclePartDot label="Llanta DI" value={tires} className="left-[22%] top-[18%]" />
+        <VehiclePartDot label="Llanta DD" value={tires} className="right-[22%] top-[18%]" />
+        <VehiclePartDot label="Llanta TI" value={tires} className="left-[22%] bottom-[18%]" />
+        <VehiclePartDot label="Llanta TD" value={tires} className="right-[22%] bottom-[18%]" />
+        <VehiclePartDot label="Frenos" value={brakes} className="left-1/2 top-[44%] -translate-x-1/2" />
+        <VehiclePartDot label="Suspension" value={suspension} className="left-1/2 bottom-[18%] -translate-x-1/2" />
+      </div>
+      <p className="text-sm font-bold text-zinc-400">
+        Vista inicial: muestra vida estimada por sistema. En una siguiente version podemos separar cada llanta,
+        amortiguador o freno con registros especificos.
+      </p>
+    </div>
+  );
+}
+
+function VehiclePartDot({ label, value, className }: { label: string; value: number; className: string }) {
+  const color = getHealthTone(value).ring;
+
+  return (
+    <div className={`absolute grid justify-items-center gap-1 ${className}`}>
+      <div className={`grid h-14 w-14 place-items-center rounded-full border-4 bg-[#1d2024] text-xs font-black ${color}`}>
+        {value}%
+      </div>
+      <span className="text-[11px] font-black uppercase text-zinc-400">{label}</span>
+    </div>
+  );
 }
 
 function StatusMessage({ message }: { message: string }) {
@@ -1251,6 +1355,61 @@ function getUpcomingServices(services: ServiceRecord[], dailyKm: number) {
 
 function getServiceInterval(service: ServiceRecord) {
   return service.recommended_interval_km ?? serviceIntervals[service.service_type] ?? 0;
+}
+
+function getServiceHealth(services: ServiceRecord[]) {
+  const servicesWithMileage = services.filter((service) => service.mileage && getServiceInterval(service));
+  const currentMileage = Math.max(...servicesWithMileage.map((service) => Number(service.mileage ?? 0)), 0);
+  const latestByType = new Map<string, ServiceRecord>();
+
+  servicesWithMileage.forEach((service) => {
+    const current = latestByType.get(service.service_type);
+    if (!current || Number(service.mileage ?? 0) > Number(current.mileage ?? 0)) {
+      latestByType.set(service.service_type, service);
+    }
+  });
+
+  return Array.from(latestByType.values())
+    .map((service) => {
+      const intervalKm = getServiceInterval(service);
+      const usedKm = Math.max(0, currentMileage - Number(service.mileage ?? 0));
+      const remainingKm = Math.max(0, intervalKm - usedKm);
+      const percent = intervalKm ? Math.max(0, Math.min(100, Math.round((remainingKm / intervalKm) * 100))) : 0;
+      const tone = getHealthTone(percent);
+
+      return {
+        serviceType: service.service_type,
+        intervalKm,
+        remainingKm,
+        percent,
+        ...tone,
+      };
+    })
+    .sort((a, b) => a.percent - b.percent);
+}
+
+function getHealthTone(percent: number) {
+  if (percent <= 35) {
+    return {
+      barColor: "bg-red-500",
+      textColor: "text-red-300",
+      ring: "border-red-500 text-red-200",
+    };
+  }
+
+  if (percent <= 65) {
+    return {
+      barColor: "bg-yellow-400",
+      textColor: "text-yellow-200",
+      ring: "border-yellow-400 text-yellow-100",
+    };
+  }
+
+  return {
+    barColor: "bg-emerald-500",
+    textColor: "text-emerald-300",
+    ring: "border-emerald-500 text-emerald-200",
+  };
 }
 
 function getSuggestedServiceDate(services: ServiceRecord[], vehicleId: string) {
