@@ -51,7 +51,7 @@ type ServiceRecord = {
   } | null;
 };
 
-type AppView = "dashboard" | "profile" | "vehicles" | "services";
+type AppView = "dashboard" | "profile" | "vehicles" | "services" | "vehicle3d";
 
 const serviceIntervals: Record<string, number> = {
   "Servicio de Motor": 7000,
@@ -486,7 +486,7 @@ export function NyfromMvp() {
         <ProfileSummary profile={profile} userEmail={user.email ?? ""} dailyKm={dailyKm} onEdit={() => setActiveView("profile")} />
       </section>
 
-      <section className="mb-5 grid gap-2 rounded-lg border border-white/12 bg-[#1d2024] p-2 shadow-xl shadow-black/20 md:grid-cols-4">
+      <section className="mb-5 grid gap-2 rounded-lg border border-white/12 bg-[#1d2024] p-2 shadow-xl shadow-black/20 md:grid-cols-5">
         <TabButton active={activeView === "dashboard"} onClick={() => setActiveView("dashboard")}>
           Dashboard
         </TabButton>
@@ -498,6 +498,9 @@ export function NyfromMvp() {
         </TabButton>
         <TabButton active={activeView === "services"} onClick={() => setActiveView("services")}>
           Servicios
+        </TabButton>
+        <TabButton active={activeView === "vehicle3d"} onClick={() => setActiveView("vehicle3d")}>
+          Vista 3D
         </TabButton>
       </section>
 
@@ -668,12 +671,9 @@ export function NyfromMvp() {
 
       {activeView === "dashboard" ? (
         <>
-      <section className="mb-5 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+      <section className="mb-5">
         <Panel eyebrow="Estado" title="Vida util por servicio">
           <ServiceHealthList items={healthItems} />
-        </Panel>
-        <Panel eyebrow="Vista del vehiculo" title="Partes monitoreadas">
-          <VehiclePartsView items={healthItems} />
         </Panel>
       </section>
 
@@ -784,6 +784,14 @@ export function NyfromMvp() {
         </Panel>
       </section>
         </>
+      ) : null}
+
+      {activeView === "vehicle3d" ? (
+        <section className="mb-5">
+          <Panel eyebrow="Vista 3D" title="Blueprint del vehiculo">
+            <VehicleBlueprintView items={healthItems} />
+          </Panel>
+        </section>
       ) : null}
 
       <StatusMessage message={status} />
@@ -1030,6 +1038,11 @@ function StepBanner({ activeView, hasVehicle }: { activeView: AppView; hasVehicl
         ? "Selecciona un vehiculo, registra el servicio y Auto Hub calculara proximas recomendaciones."
         : "Ve a Vehiculos para guardar tu primer registro antes de crear servicios.",
     },
+    vehicle3d: {
+      eyebrow: "Vista 3D",
+      title: "Revisa el estado grafico del vehiculo",
+      body: "Esta vista concentra llantas, frenos, suspension y motor para leer el estado de vida util de forma visual.",
+    },
   };
 
   const item = copy[activeView];
@@ -1171,39 +1184,98 @@ function ServiceHealthList({ items }: { items: ReturnType<typeof getServiceHealt
   );
 }
 
-function VehiclePartsView({ items }: { items: ReturnType<typeof getServiceHealth> }) {
+function VehicleBlueprintView({ items }: { items: ReturnType<typeof getServiceHealth> }) {
   const tires = items.find((item) => item.serviceType === "Servicio de Llantas")?.percent ?? 0;
   const brakes = items.find((item) => item.serviceType === "Servicio de Frenos")?.percent ?? 0;
   const suspension = items.find((item) => item.serviceType === "Servicio de Suspension")?.percent ?? 0;
+  const motor = items.find((item) => item.serviceType === "Servicio de Motor")?.percent ?? 0;
 
   return (
-    <div className="grid gap-4">
-      <div className="relative mx-auto h-56 w-full max-w-xl rounded-lg border border-white/12 bg-black/20 p-6">
-        <div className="absolute left-1/2 top-8 h-40 w-56 -translate-x-1/2 rounded-[42px] border-2 border-zinc-500/80 bg-white/5 shadow-2xl shadow-black/30" />
-        <VehiclePartDot label="Llanta DI" value={tires} className="left-[22%] top-[18%]" />
-        <VehiclePartDot label="Llanta DD" value={tires} className="right-[22%] top-[18%]" />
-        <VehiclePartDot label="Llanta TI" value={tires} className="left-[22%] bottom-[18%]" />
-        <VehiclePartDot label="Llanta TD" value={tires} className="right-[22%] bottom-[18%]" />
-        <VehiclePartDot label="Frenos" value={brakes} className="left-1/2 top-[44%] -translate-x-1/2" />
-        <VehiclePartDot label="Suspension" value={suspension} className="left-1/2 bottom-[18%] -translate-x-1/2" />
+    <div className="grid gap-5">
+      <div className="relative min-h-[620px] overflow-hidden rounded-lg border border-cyan-300/20 bg-black shadow-2xl shadow-cyan-950/40">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(14,165,233,0.18),transparent_45%)]" />
+        <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(34,211,238,0.22)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.22)_1px,transparent_1px)] [background-size:28px_28px]" />
+        <svg
+          className="absolute inset-x-0 top-16 mx-auto h-[430px] w-[min(980px,94%)] text-cyan-300 drop-shadow-[0_0_18px_rgba(34,211,238,0.75)]"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          viewBox="0 0 980 430"
+        >
+          <g opacity="0.9" strokeWidth="3">
+            <path d="M118 252c26-74 88-126 169-150 136-40 323-37 463 4 69 20 121 66 146 129 10 24 3 50-24 58-122 36-277 48-431 40-132-7-240-28-316-59-12-5-12-12-7-22Z" />
+            <path d="M195 229c40-67 122-107 236-120 119-13 262-2 365 45" />
+            <path d="M293 128l61 97h245l71-89" />
+            <path d="M354 225l-28 94" />
+            <path d="M599 225l26 104" />
+            <path d="M156 264h707" />
+            <path d="M255 313c114 28 346 38 510 3" />
+            <path d="M414 161v62" />
+            <path d="M535 156v68" />
+          </g>
+          <g opacity="0.7" strokeWidth="1.5">
+            {Array.from({ length: 18 }).map((_, index) => (
+              <path key={`body-line-${index}`} d={`M${170 + index * 36} ${118 + (index % 4) * 18} C${250 + index * 28} ${230 + (index % 5) * 12}, ${440 + index * 16} ${290 - (index % 6) * 10}, ${810 - index * 18} ${260 + (index % 3) * 14}`} />
+            ))}
+            {Array.from({ length: 12 }).map((_, index) => (
+              <path key={`cross-line-${index}`} d={`M${210 + index * 48} 112 L${270 + index * 36} 325`} />
+            ))}
+          </g>
+          <BlueprintWheel cx={206} cy={305} />
+          <BlueprintWheel cx={760} cy={305} />
+          <BlueprintWheel cx={286} cy={144} small />
+          <BlueprintWheel cx={696} cy={146} small />
+          <g strokeWidth="2" opacity="0.85">
+            <path d="M430 248h120l34 38-34 38H430l-34-38 34-38Z" />
+            <path d="M451 262h78" />
+            <path d="M451 284h92" />
+            <path d="M451 306h70" />
+          </g>
+        </svg>
+        <BlueprintStat label="Motor" value={motor} className="left-6 top-6" />
+        <BlueprintStat label="Llantas" value={tires} className="right-6 top-6" />
+        <BlueprintStat label="Frenos" value={brakes} className="left-6 bottom-6" />
+        <BlueprintStat label="Suspension" value={suspension} className="right-6 bottom-6" />
       </div>
       <p className="text-sm font-bold text-zinc-400">
-        Vista inicial: muestra vida estimada por sistema. En una siguiente version podemos separar cada llanta,
-        amortiguador o freno con registros especificos.
+        Vista blueprint inicial: por ahora resume vida por sistema. El siguiente paso seria guardar componentes
+        especificos por posicion, como amortiguador izquierdo, frenos delanteros o cada llanta individual.
       </p>
     </div>
   );
 }
 
-function VehiclePartDot({ label, value, className }: { label: string; value: number; className: string }) {
-  const color = getHealthTone(value).ring;
+function BlueprintWheel({ cx, cy, small = false }: { cx: number; cy: number; small?: boolean }) {
+  const radius = small ? 38 : 58;
 
   return (
-    <div className={`absolute grid justify-items-center gap-1 ${className}`}>
-      <div className={`grid h-14 w-14 place-items-center rounded-full border-4 bg-[#1d2024] text-xs font-black ${color}`}>
-        {value}%
+    <g strokeWidth={small ? 2 : 3} opacity="0.9">
+      <circle cx={cx} cy={cy} r={radius} />
+      <circle cx={cx} cy={cy} r={radius * 0.62} />
+      <circle cx={cx} cy={cy} r={radius * 0.16} />
+      {Array.from({ length: 8 }).map((_, index) => {
+        const angle = (Math.PI * 2 * index) / 8;
+        const x = cx + Math.cos(angle) * radius * 0.62;
+        const y = cy + Math.sin(angle) * radius * 0.62;
+        return <path key={index} d={`M${cx} ${cy} L${x.toFixed(1)} ${y.toFixed(1)}`} />;
+      })}
+    </g>
+  );
+}
+
+function BlueprintStat({ label, value, className }: { label: string; value: number; className: string }) {
+  const tone = getHealthTone(value);
+
+  return (
+    <div className={`absolute w-44 rounded-lg border border-cyan-300/30 bg-black/70 p-4 shadow-xl shadow-cyan-950/40 backdrop-blur ${className}`}>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="text-xs font-black uppercase text-cyan-200">{label}</span>
+        <strong className={tone.textColor}>{value}%</strong>
       </div>
-      <span className="text-[11px] font-black uppercase text-zinc-400">{label}</span>
+      <div className="h-2 overflow-hidden rounded-full bg-cyan-950/70">
+        <div className={`h-full ${tone.barColor}`} style={{ width: `${value}%` }} />
+      </div>
     </div>
   );
 }
