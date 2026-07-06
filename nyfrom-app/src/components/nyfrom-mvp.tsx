@@ -451,6 +451,36 @@ export function NyfromMvp() {
     await loadData();
   }
 
+  async function saveWishlistItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!supabase || !user) {
+      return;
+    }
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const feedback = String(formData.get("feedback") ?? "").trim();
+
+    if (feedback.length < 3) {
+      setStatus("Escribe una idea un poco mas detallada para la wishlist.");
+      return;
+    }
+
+    const { error } = await supabase.from("wishlist_items").insert({
+      user_id: user.id,
+      feedback,
+    });
+
+    if (error) {
+      setStatus(`No se pudo guardar wishlist: ${error.message}`);
+      return;
+    }
+
+    form.reset();
+    setStatus("Gracias. Tu idea fue guardada en la wishlist.");
+  }
+
   async function deleteVehicle(vehicle: Vehicle) {
     if (!supabase || !window.confirm(`Borrar ${vehicleLabel(vehicle)}? Tambien se borrara su historial.`)) {
       return;
@@ -866,6 +896,27 @@ export function NyfromMvp() {
               <EmptyState text="Aun no hay vehiculos registrados." />
             )}
           </div>
+        </Panel>
+      </section>
+
+      <section className="mt-5">
+        <Panel eyebrow="Wishlist" title="Que te gustaria ver en Auto Hub">
+          <form className="grid gap-4" onSubmit={saveWishlistItem}>
+            <p className="max-w-3xl text-sm font-bold text-zinc-400">
+              Cuéntanos qué te gustaría que tuviera la app. Esta sección nos ayuda a recibir feedback directo
+              para decidir las próximas funciones.
+            </p>
+            <textarea
+              className="min-h-28 rounded-lg border border-white/12 bg-black/25 px-4 py-3 text-white outline-none focus:border-red-300"
+              name="feedback"
+              maxLength={1000}
+              placeholder="Ejemplo: recordatorios por WhatsApp, fotos de facturas, alertas por placa, control de combustible..."
+              required
+            />
+            <button className="min-h-12 w-fit rounded-lg bg-red-600 px-5 font-black text-white" type="submit">
+              Guardar idea
+            </button>
+          </form>
         </Panel>
       </section>
         </>
