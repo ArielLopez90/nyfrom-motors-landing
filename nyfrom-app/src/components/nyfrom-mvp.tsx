@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEventHandler, FormEvent } from "react";
 import type { User } from "@supabase/supabase-js";
 import Image from "next/image";
@@ -53,6 +53,7 @@ type ServiceRecord = {
 };
 
 type AppView = "dashboard" | "profile" | "vehicles" | "services" | "vehicle3d";
+type ActivityMetadata = Record<string, string | number | boolean | null>;
 type BlueprintPart = {
   id: string;
   group: string;
@@ -102,6 +103,7 @@ export function NyfromMvp() {
   const [selectedServiceVehicleId, setSelectedServiceVehicleId] = useState("");
   const [historyVehicleId, setHistoryVehicleId] = useState("all");
   const [activeView, setActiveView] = useState<AppView>("profile");
+  const trackedOpenForUser = useRef<string | null>(null);
 
   useEffect(() => {
     if (!supabase) {
@@ -129,19 +131,32 @@ export function NyfromMvp() {
   }, [user]);
 
   useEffect(() => {
+    if (!user || trackedOpenForUser.current === user.id) {
+      return;
+    }
+
+    trackedOpenForUser.current = user.id;
+    void trackActivityForUser(user.id, "app_opened");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  useEffect(() => {
     if (!user) {
       return;
     }
 
+    let nextView: AppView | null = null;
+
     if (!profile?.driving_distance) {
-      setActiveView("profile");
-      return;
+      nextView = "profile";
+    } else if (!vehicles.length) {
+      nextView = "vehicles";
     }
 
-    if (!vehicles.length) {
-      setActiveView("vehicles");
+    if (nextView && activeView !== nextView) {
+      queueMicrotask(() => setActiveView(nextView));
     }
-  }, [user, profile?.driving_distance, vehicles.length]);
+  }, [activeView, user, profile?.driving_distance, vehicles.length]);
 
   const dailyKm = getDailyKm(profile);
   const suggestedServiceDate = getSuggestedServiceDate(
@@ -203,6 +218,31 @@ export function NyfromMvp() {
     setServices(normalizeServices(servicesResult.data ?? []));
   }
 
+  async function trackActivity(eventName: string, metadata: ActivityMetadata = {}) {
+    if (!user) {
+      return;
+    }
+
+    await trackActivityForUser(user.id, eventName, metadata);
+  }
+
+  async function trackActivityForUser(userId: string, eventName: string, metadata: ActivityMetadata = {}) {
+    if (!supabase) {
+      return;
+    }
+
+    const { error } = await supabase.from("user_activity").insert({
+      user_id: userId,
+      event_name: eventName,
+      page_path: typeof window === "undefined" ? null : window.location.pathname,
+      metadata,
+    });
+
+    if (error) {
+      console.warn("No se pudo registrar actividad:", error.message);
+    }
+  }
+
   async function handleAuth(formData: FormData) {
     if (!supabase) {
       return;
@@ -231,6 +271,9 @@ export function NyfromMvp() {
     }
 
     setStatus("Sesion iniciada.");
+    if (result.data.user) {
+      void trackActivityForUser(result.data.user.id, authMode === "signin" ? "login" : "signup");
+    }
   }
 
   async function handleLogout() {
@@ -271,6 +314,10 @@ export function NyfromMvp() {
     }
 
     setStatus("Perfil guardado.");
+    void trackActivity("profile_updated", {
+      has_birth_date: Boolean(payload.birth_date),
+      distance_period: payload.distance_period,
+    });
     await loadData();
     setActiveView(vehicles.length ? "dashboard" : "vehicles");
   }
@@ -317,6 +364,11 @@ export function NyfromMvp() {
     form.reset();
     setEditingVehicle(null);
     setStatus(editingVehicle ? "Vehiculo actualizado." : "Vehiculo guardado.");
+    void trackActivity(editingVehicle ? "vehicle_updated" : "vehicle_created", {
+      vehicle_type: payload.vehicle_type,
+      model_year: payload.model_year,
+      has_plate: Boolean(payload.plate),
+    });
     await loadData();
     setActiveView("services");
   }
@@ -383,6 +435,11 @@ export function NyfromMvp() {
     setSelectedServiceVehicleId(payload.vehicle_id);
     setSelectedServiceType("Servicio de Motor");
     setStatus(editingService ? "Servicio actualizado." : "Servicio guardado.");
+    void trackActivity(editingService ? "service_record_updated" : "service_record_created", {
+      service_type: payload.service_type,
+      has_mileage: Boolean(payload.mileage),
+      has_estimated_cost: Boolean(payload.estimated_cost),
+    });
     await loadData();
     setActiveView("dashboard");
   }
@@ -401,6 +458,7 @@ export function NyfromMvp() {
 
     if (showMessage) {
       setStatus("Kilometraje actualizado.");
+      void trackActivity("vehicle_mileage_updated");
       await loadData();
     }
   }
@@ -448,6 +506,10 @@ export function NyfromMvp() {
     }
 
     setStatus("Servicio registrado y estimacion reiniciada.");
+    void trackActivity("upcoming_service_completed", {
+      service_type: item.serviceType,
+      interval_km: item.intervalKm,
+    });
     await loadData();
   }
 
@@ -479,6 +541,9 @@ export function NyfromMvp() {
 
     form.reset();
     setStatus("Gracias. Tu idea fue guardada en la wishlist.");
+    void trackActivity("wishlist_item_created", {
+      feedback_length: feedback.length,
+    });
   }
 
   async function deleteVehicle(vehicle: Vehicle) {
@@ -494,6 +559,7 @@ export function NyfromMvp() {
     }
 
     setStatus("Vehiculo borrado.");
+    void trackActivity("vehicle_deleted");
     await loadData();
   }
 
@@ -510,6 +576,9 @@ export function NyfromMvp() {
     }
 
     setStatus("Servicio borrado.");
+    void trackActivity("service_record_deleted", {
+      service_type: service.service_type,
+    });
     await loadData();
   }
 
