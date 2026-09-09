@@ -35,49 +35,63 @@ create table if not exists public.vehicles (
   user_id uuid not null references auth.users(id) on delete cascade,
   owner_name text not null,
   plate text,
-  vin text not null,
-  make text not null,
-  model_line text not null,
+  vin text,
+  make text,
+  model_line text,
   model_year integer,
-  engine text not null,
+  engine text,
   usage text,
   vehicle_type text,
   seats integer,
   color text,
-  cylinders integer,
-  cc integer,
-  current_mileage integer,
+  cylinders numeric,
+  cc numeric,
+  current_mileage numeric,
+  current_mileage_unit text not null default 'km',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint vehicles_vin_length check (char_length(vin) between 6 and 17),
+  constraint vehicles_vin_length check (vin is null or char_length(vin) between 6 and 17),
   constraint vehicles_model_year_check check (model_year is null or model_year between 1900 and 2100),
   constraint vehicles_seats_check check (seats is null or seats >= 1),
-  constraint vehicles_cylinders_check check (cylinders is null or cylinders >= 1),
-  constraint vehicles_cc_check check (cc is null or cc >= 1),
-  constraint vehicles_current_mileage_check check (current_mileage is null or current_mileage >= 0)
+  constraint vehicles_cylinders_check check (cylinders is null or cylinders >= 0),
+  constraint vehicles_cc_check check (cc is null or cc >= 0),
+  constraint vehicles_current_mileage_check check (current_mileage is null or current_mileage >= 0),
+  constraint vehicles_current_mileage_unit_check check (current_mileage_unit in ('km', 'mi'))
 );
 
 alter table public.vehicles add column if not exists plate text;
+alter table public.vehicles alter column vin drop not null;
+alter table public.vehicles alter column make drop not null;
+alter table public.vehicles alter column model_line drop not null;
+alter table public.vehicles alter column engine drop not null;
 alter table public.vehicles add column if not exists model_year integer;
 alter table public.vehicles add column if not exists usage text;
 alter table public.vehicles add column if not exists vehicle_type text;
 alter table public.vehicles add column if not exists seats integer;
 alter table public.vehicles add column if not exists color text;
-alter table public.vehicles add column if not exists cylinders integer;
-alter table public.vehicles add column if not exists cc integer;
-alter table public.vehicles add column if not exists current_mileage integer;
+alter table public.vehicles add column if not exists cylinders numeric;
+alter table public.vehicles add column if not exists cc numeric;
+alter table public.vehicles add column if not exists current_mileage numeric;
+alter table public.vehicles add column if not exists current_mileage_unit text not null default 'km';
+alter table public.vehicles alter column cylinders type numeric using cylinders::numeric;
+alter table public.vehicles alter column cc type numeric using cc::numeric;
+alter table public.vehicles alter column current_mileage type numeric using current_mileage::numeric;
 
+alter table public.vehicles drop constraint if exists vehicles_vin_length;
 alter table public.vehicles drop constraint if exists vehicles_model_year_check;
 alter table public.vehicles drop constraint if exists vehicles_seats_check;
 alter table public.vehicles drop constraint if exists vehicles_cylinders_check;
 alter table public.vehicles drop constraint if exists vehicles_cc_check;
 alter table public.vehicles drop constraint if exists vehicles_current_mileage_check;
+alter table public.vehicles drop constraint if exists vehicles_current_mileage_unit_check;
 
+alter table public.vehicles add constraint vehicles_vin_length check (vin is null or char_length(vin) between 6 and 17);
 alter table public.vehicles add constraint vehicles_model_year_check check (model_year is null or model_year between 1900 and 2100);
 alter table public.vehicles add constraint vehicles_seats_check check (seats is null or seats >= 1);
-alter table public.vehicles add constraint vehicles_cylinders_check check (cylinders is null or cylinders >= 1);
-alter table public.vehicles add constraint vehicles_cc_check check (cc is null or cc >= 1);
+alter table public.vehicles add constraint vehicles_cylinders_check check (cylinders is null or cylinders >= 0);
+alter table public.vehicles add constraint vehicles_cc_check check (cc is null or cc >= 0);
 alter table public.vehicles add constraint vehicles_current_mileage_check check (current_mileage is null or current_mileage >= 0);
+alter table public.vehicles add constraint vehicles_current_mileage_unit_check check (current_mileage_unit in ('km', 'mi'));
 
 create table if not exists public.service_records (
   id uuid primary key default gen_random_uuid(),
@@ -143,9 +157,18 @@ alter table public.service_records add constraint service_records_type_check che
   )
 );
 
+create table if not exists public.wishlist_items (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  feedback text not null,
+  created_at timestamptz not null default now(),
+  constraint wishlist_items_feedback_check check (char_length(trim(feedback)) between 3 and 1000)
+);
+
 alter table public.profiles enable row level security;
 alter table public.vehicles enable row level security;
 alter table public.service_records enable row level security;
+alter table public.wishlist_items enable row level security;
 
 drop policy if exists "Users can read their profile" on public.profiles;
 drop policy if exists "Users can insert their profile" on public.profiles;
@@ -159,6 +182,8 @@ drop policy if exists "Users can read their service records" on public.service_r
 drop policy if exists "Users can insert their service records" on public.service_records;
 drop policy if exists "Users can update their service records" on public.service_records;
 drop policy if exists "Users can delete their service records" on public.service_records;
+drop policy if exists "Users can read their wishlist items" on public.wishlist_items;
+drop policy if exists "Users can insert their wishlist items" on public.wishlist_items;
 
 create policy "Users can read their profile"
   on public.profiles
@@ -243,6 +268,18 @@ create policy "Users can delete their service records"
   to authenticated
   using (auth.uid() = user_id);
 
+create policy "Users can read their wishlist items"
+  on public.wishlist_items
+  for select
+  to authenticated
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their wishlist items"
+  on public.wishlist_items
+  for insert
+  to authenticated
+  with check (auth.uid() = user_id);
+
 create index if not exists vehicles_user_id_created_at_idx
   on public.vehicles (user_id, created_at desc);
 
@@ -251,3 +288,6 @@ create index if not exists service_records_user_id_service_date_idx
 
 create index if not exists service_records_vehicle_id_idx
   on public.service_records (vehicle_id);
+
+create index if not exists wishlist_items_user_id_created_at_idx
+  on public.wishlist_items (user_id, created_at desc);

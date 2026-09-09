@@ -20,11 +20,11 @@ type Vehicle = {
   id: string;
   owner_name: string;
   plate: string | null;
-  vin: string;
-  make: string;
-  model_line: string;
+  vin: string | null;
+  make: string | null;
+  model_line: string | null;
   model_year: number | null;
-  engine: string;
+  engine: string | null;
   usage: string | null;
   vehicle_type: string | null;
   seats: number | null;
@@ -32,6 +32,7 @@ type Vehicle = {
   cylinders: number | null;
   cc: number | null;
   current_mileage: number | null;
+  current_mileage_unit: "km" | "mi" | null;
 };
 
 type ServiceRecord = {
@@ -45,10 +46,10 @@ type ServiceRecord = {
   notes: string | null;
   vehicles: {
     plate: string | null;
-    make: string;
-    model_line: string;
+    make: string | null;
+    model_line: string | null;
     model_year: number | null;
-    vin: string;
+    vin: string | null;
   } | null;
 };
 
@@ -186,7 +187,7 @@ export function NyfromMvp() {
       supabase
         .from("vehicles")
         .select(
-          "id, owner_name, plate, vin, make, model_line, model_year, engine, usage, vehicle_type, seats, color, cylinders, cc, current_mileage",
+          "id, owner_name, plate, vin, make, model_line, model_year, engine, usage, vehicle_type, seats, color, cylinders, cc, current_mileage, current_mileage_unit",
         )
         .order("created_at", { ascending: false }),
       supabase
@@ -332,22 +333,29 @@ export function NyfromMvp() {
     const form = event.currentTarget;
     const formData = new FormData(form);
     const ownerName = getProfileName(profile) || user.email || "Sin nombre";
+    const currentMileageUnit = normalizeMileageUnit(formData.get("current_mileage_unit"));
+    const currentMileage = getMileageInKm(
+      formData.get("current_mileage_km"),
+      formData.get("current_mileage_miles"),
+      currentMileageUnit,
+    );
     const payload = {
       user_id: user.id,
       owner_name: ownerName,
       plate: String(formData.get("plate") ?? "").trim().toUpperCase() || null,
-      vin: String(formData.get("vin") ?? "").trim().toUpperCase(),
-      make: String(formData.get("make") ?? "").trim(),
-      model_line: String(formData.get("model_line") ?? "").trim(),
+      vin: String(formData.get("vin") ?? "").trim().toUpperCase() || null,
+      make: String(formData.get("make") ?? "").trim() || null,
+      model_line: String(formData.get("model_line") ?? "").trim() || null,
       model_year: parseOptionalNumber(formData.get("model_year")),
-      engine: String(formData.get("engine") ?? "").trim(),
+      engine: String(formData.get("engine") ?? "").trim() || null,
       usage: String(formData.get("usage") ?? "").trim() || null,
       vehicle_type: String(formData.get("vehicle_type") ?? "").trim() || null,
       seats: parseOptionalNumber(formData.get("seats")),
       color: String(formData.get("color") ?? "").trim() || null,
       cylinders: parseOptionalNumber(formData.get("cylinders")),
       cc: parseOptionalNumber(formData.get("cc")),
-      current_mileage: parseOptionalNumber(formData.get("current_mileage")),
+      current_mileage: currentMileage,
+      current_mileage_unit: currentMileageUnit,
     };
 
     const request = editingVehicle
@@ -427,7 +435,7 @@ export function NyfromMvp() {
     }
 
     if (payload.mileage) {
-      await updateVehicleMileage(payload.vehicle_id, payload.mileage, false);
+      await updateVehicleMileage(payload.vehicle_id, payload.mileage, "km", false);
     }
 
     form.reset();
@@ -444,12 +452,15 @@ export function NyfromMvp() {
     setActiveView("dashboard");
   }
 
-  async function updateVehicleMileage(vehicleId: string, mileage: number | null, showMessage = true) {
+  async function updateVehicleMileage(vehicleId: string, mileage: number | null, mileageUnit: "km" | "mi" = "km", showMessage = true) {
     if (!supabase || !mileage) {
       return;
     }
 
-    const { error } = await supabase.from("vehicles").update({ current_mileage: mileage }).eq("id", vehicleId);
+    const { error } = await supabase
+      .from("vehicles")
+      .update({ current_mileage: mileage, current_mileage_unit: mileageUnit })
+      .eq("id", vehicleId);
 
     if (error) {
       setStatus(`No se pudo actualizar kilometraje: ${error.message}`);
@@ -467,13 +478,19 @@ export function NyfromMvp() {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const vehicleId = String(formData.get("vehicle_id") ?? fallbackVehicleId);
+    const mileageUnit = normalizeMileageUnit(formData.get("current_mileage_unit"));
+    const mileage = getMileageInKm(
+      formData.get("current_mileage_km"),
+      formData.get("current_mileage_miles"),
+      mileageUnit,
+    );
 
     if (!vehicleId) {
       setStatus("Selecciona un vehiculo para actualizar kilometraje.");
       return;
     }
 
-    await updateVehicleMileage(vehicleId, parseOptionalNumber(formData.get("current_mileage")));
+    await updateVehicleMileage(vehicleId, mileage, mileageUnit);
   }
 
   async function completeUpcomingService(item: ReturnType<typeof getUpcomingServices>[number]) {
@@ -718,11 +735,11 @@ export function NyfromMvp() {
           <form className="grid gap-4" onSubmit={saveVehicle} key={editingVehicle?.id ?? "new-vehicle"}>
             <div className="grid gap-4 md:grid-cols-2">
               <TextField label="Placa" name="plate" defaultValue={editingVehicle?.plate ?? ""} />
-              <TextField label="VIN" name="vin" maxLength={17} required defaultValue={editingVehicle?.vin ?? ""} />
-              <TextField label="Marca" name="make" required defaultValue={editingVehicle?.make ?? ""} />
-              <TextField label="Linea" name="model_line" required defaultValue={editingVehicle?.model_line ?? ""} />
+              <TextField label="VIN" name="vin" maxLength={17} defaultValue={editingVehicle?.vin ?? ""} />
+              <TextField label="Marca" name="make" defaultValue={editingVehicle?.make ?? ""} />
+              <TextField label="Linea" name="model_line" defaultValue={editingVehicle?.model_line ?? ""} />
               <TextField label="Modelo" name="model_year" type="number" min={1900} defaultValue={editingVehicle?.model_year ?? ""} />
-              <TextField label="Motor" name="engine" required defaultValue={editingVehicle?.engine ?? ""} />
+              <TextField label="Motor" name="engine" defaultValue={editingVehicle?.engine ?? ""} />
               <SelectField label="Uso" name="usage" defaultValue={editingVehicle?.usage ?? ""}>
                 <option value="">Selecciona uso</option>
                 {usageTypes.map((type) => <option key={type} value={type}>{type}</option>)}
@@ -733,9 +750,14 @@ export function NyfromMvp() {
               </SelectField>
               <TextField label="Asientos" name="seats" type="number" min={1} defaultValue={editingVehicle?.seats ?? ""} />
               <TextField label="Color" name="color" defaultValue={editingVehicle?.color ?? ""} />
-              <TextField label="Cilindros" name="cylinders" type="number" min={1} defaultValue={editingVehicle?.cylinders ?? ""} />
-              <TextField label="CC" name="cc" type="number" min={1} defaultValue={editingVehicle?.cc ?? ""} />
-              <TextField label="Kilometraje actual" name="current_mileage" type="number" min={0} defaultValue={editingVehicle?.current_mileage ?? ""} />
+              <TextField label="Cilindros" name="cylinders" type="number" min={0} step="any" defaultValue={editingVehicle?.cylinders ?? ""} />
+              <TextField label="CC / litros" name="cc" type="number" min={0} step="any" defaultValue={editingVehicle?.cc ?? ""} />
+              <SelectField label="Unidad principal" name="current_mileage_unit" defaultValue={editingVehicle?.current_mileage_unit ?? "km"}>
+                <option value="km">Kilometros</option>
+                <option value="mi">Millas</option>
+              </SelectField>
+              <TextField label="Kilometraje actual (km)" name="current_mileage_km" type="number" min={0} step="any" defaultValue={editingVehicle?.current_mileage ?? ""} />
+              <TextField label="Millaje actual (mi)" name="current_mileage_miles" type="number" min={0} step="any" defaultValue={editingVehicle?.current_mileage ? kmToMiles(editingVehicle.current_mileage).toFixed(1) : ""} />
             </div>
             <div className="flex flex-wrap gap-3">
               <button className="min-h-12 rounded-lg bg-red-600 px-5 font-black text-white" type="submit">
@@ -940,11 +962,11 @@ export function NyfromMvp() {
               vehicles.map((vehicle) => (
                 <RecordCard key={vehicle.id}>
                   <strong><IconText icon={vehicleIcon(vehicle)}>{vehicleLabel(vehicle)}</IconText></strong>
-                  <span>VIN: {vehicle.vin}</span>
+                  <span>VIN: {vehicle.vin || "Pendiente"}</span>
                   <span>
-                    Motor: {vehicle.engine}
+                    Motor: {vehicle.engine || "Pendiente"}
                     {vehicle.cylinders ? ` - ${vehicle.cylinders} cilindros` : ""}
-                    {vehicle.cc ? ` - ${vehicle.cc} cc` : ""}
+                    {vehicle.cc ? ` - ${formatEngineDisplacement(vehicle.cc)}` : ""}
                   </span>
                   <span>
                     {vehicle.color ? `Color: ${vehicle.color}` : "Color pendiente"}
@@ -1047,6 +1069,7 @@ function MileageQuickUpdate({
   onSubmit: (event: FormEvent<HTMLFormElement>, fallbackVehicleId?: string) => void;
 }) {
   const firstVehicle = vehicles[0];
+  const firstVehicleMileage = firstVehicle?.current_mileage ?? null;
 
   if (!firstVehicle) {
     return null;
@@ -1054,32 +1077,54 @@ function MileageQuickUpdate({
 
   return (
     <section className="mb-5 rounded-lg border border-red-400/30 bg-red-950/25 p-5 shadow-xl shadow-red-950/20">
-      <form className="grid gap-4 lg:grid-cols-[1.1fr_1fr_auto]" onSubmit={(event) => onSubmit(event)}>
+      <form className="grid gap-4 lg:grid-cols-[1.1fr_1fr_1.4fr]" onSubmit={(event) => onSubmit(event)}>
         <div>
           <p className="text-xs font-black uppercase text-red-200">Kilometraje actual</p>
-          <h2 className="mt-1 text-2xl font-black text-white">Actualiza el km del vehiculo</h2>
+          <h2 className="mt-1 text-2xl font-black text-white">Actualiza km o millas</h2>
+          <p className="mt-2 text-sm font-bold text-red-100/80">
+            {formatMileageBothUnits(firstVehicleMileage)}
+          </p>
         </div>
-        <select
-          className="min-h-14 rounded-lg border border-red-300/30 bg-black/35 px-4 text-base font-black text-white outline-none focus:border-red-200"
-          name="vehicle_id"
-          defaultValue={firstVehicle.id}
-        >
-          {vehicles.map((vehicle) => (
-            <option key={vehicle.id} value={vehicle.id}>
-              {vehicleLabel(vehicle)}
-            </option>
-          ))}
-        </select>
-        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+        <div className="grid gap-3">
+          <select
+            className="min-h-14 rounded-lg border border-red-300/30 bg-black/35 px-4 text-base font-black text-white outline-none focus:border-red-200"
+            name="vehicle_id"
+            defaultValue={firstVehicle.id}
+          >
+            {vehicles.map((vehicle) => (
+              <option key={vehicle.id} value={vehicle.id}>
+                {vehicleLabel(vehicle)}
+              </option>
+            ))}
+          </select>
+          <select
+            className="min-h-14 rounded-lg border border-red-300/30 bg-black/35 px-4 text-base font-black text-white outline-none focus:border-red-200"
+            name="current_mileage_unit"
+            defaultValue={firstVehicle.current_mileage_unit ?? "km"}
+          >
+            <option value="km">Guardar desde kilometros</option>
+            <option value="mi">Guardar desde millas</option>
+          </select>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
           <input
             className="min-h-14 min-w-0 rounded-lg border border-red-300/30 bg-black/35 px-4 text-lg font-black text-white outline-none focus:border-red-200"
-            name="current_mileage"
+            name="current_mileage_km"
             type="number"
             min={0}
-            placeholder={firstVehicle.current_mileage ? `${firstVehicle.current_mileage.toLocaleString("es-GT")} km` : "Kilometraje"}
+            step="any"
+            placeholder={firstVehicleMileage ? `${firstVehicleMileage.toLocaleString("es-GT")} km` : "Km"}
+          />
+          <input
+            className="min-h-14 min-w-0 rounded-lg border border-red-300/30 bg-black/35 px-4 text-lg font-black text-white outline-none focus:border-red-200"
+            name="current_mileage_miles"
+            type="number"
+            min={0}
+            step="any"
+            placeholder={firstVehicleMileage ? `${kmToMiles(firstVehicleMileage).toLocaleString("es-GT", { maximumFractionDigits: 1 })} mi` : "Millas"}
           />
           <button className="min-h-14 rounded-lg bg-red-600 px-6 text-base font-black text-white shadow-lg shadow-red-950/30" type="submit">
-            Actualizar km
+            Actualizar
           </button>
         </div>
       </form>
@@ -1178,15 +1223,15 @@ function VehicleOverview({
         </div>
         {featuredVehicle ? (
           <dl className="mt-6 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
-            <SummaryLine label="VIN" value={featuredVehicle.vin} />
-            <SummaryLine label="Motor" value={featuredVehicle.engine} />
+            <SummaryLine label="VIN" value={featuredVehicle.vin || "Pendiente"} />
+            <SummaryLine label="Motor" value={featuredVehicle.engine || "Pendiente"} />
             <SummaryLine label="Color" value={featuredVehicle.color || "Pendiente"} />
-            <SummaryLine label="Kilometraje" value={featuredVehicle.current_mileage ? `${featuredVehicle.current_mileage.toLocaleString("es-GT")} km` : "Pendiente"} />
+            <SummaryLine label="Kilometraje" value={formatMileageBothUnits(featuredVehicle.current_mileage)} />
             <SummaryLine label="Historial" value={`${featuredServices} servicios`} />
           </dl>
         ) : (
           <p className="mt-6 max-w-xl text-lg text-zinc-300">
-            Usa la pestana Registrar datos para guardar placa, VIN, marca, linea y motor.
+            Usa la pestana Registrar datos para guardar lo que tengas a mano del vehiculo.
           </p>
         )}
       </div>
@@ -1341,6 +1386,7 @@ function TextField({
   required = false,
   maxLength,
   min,
+  step,
   defaultValue,
 }: {
   label: string;
@@ -1349,6 +1395,7 @@ function TextField({
   required?: boolean;
   maxLength?: number;
   min?: number;
+  step?: number | "any";
   defaultValue?: string | number;
 }) {
   return (
@@ -1361,6 +1408,7 @@ function TextField({
         required={required}
         maxLength={maxLength}
         min={min}
+        step={step}
         defaultValue={defaultValue}
       />
     </label>
@@ -1669,8 +1717,53 @@ function formatMoney(value: number | null | undefined) {
 }
 
 function parseOptionalNumber(value: FormDataEntryValue | null) {
+  if (value === null || String(value).trim() === "") {
+    return null;
+  }
+
   const numberValue = Number(value);
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null;
+}
+
+function normalizeMileageUnit(value: FormDataEntryValue | null): "km" | "mi" {
+  return value === "mi" ? "mi" : "km";
+}
+
+function getMileageInKm(
+  kmValue: FormDataEntryValue | null,
+  mileValue: FormDataEntryValue | null,
+  preferredUnit: "km" | "mi",
+) {
+  const kilometers = parseOptionalNumber(kmValue);
+  const miles = parseOptionalNumber(mileValue);
+
+  if (preferredUnit === "mi") {
+    return miles ? milesToKm(miles) : kilometers;
+  }
+
+  return kilometers ?? (miles ? milesToKm(miles) : null);
+}
+
+function milesToKm(value: number) {
+  return Number((value * 1.609344).toFixed(1));
+}
+
+function kmToMiles(value: number) {
+  return value / 1.609344;
+}
+
+function formatMileageBothUnits(value: number | null | undefined) {
+  if (!value) {
+    return "Pendiente";
+  }
+
+  const kilometers = value.toLocaleString("es-GT", { maximumFractionDigits: 1 });
+  const miles = kmToMiles(value).toLocaleString("es-GT", { maximumFractionDigits: 1 });
+  return `${kilometers} km / ${miles} mi`;
+}
+
+function formatEngineDisplacement(value: number) {
+  return value >= 100 ? `${value.toLocaleString("es-GT")} cc` : `${value.toLocaleString("es-GT")} L`;
 }
 
 function getProfileName(profile: Profile | null) {
@@ -1686,12 +1779,13 @@ function getDailyKm(profile: Profile | null) {
 }
 
 function vehicleLabel(vehicle: Vehicle) {
-  return `${vehicle.make} ${vehicle.model_line}${vehicle.model_year ? ` ${vehicle.model_year}` : ""} - ${vehicle.plate || "Sin placa"}`;
+  const name = [vehicle.make, vehicle.model_line, vehicle.model_year].filter(Boolean).join(" ").trim();
+  return `${name || "Vehiculo"} - ${vehicle.plate || vehicle.vin || "Sin placa"}`;
 }
 
 function vehicleIcon(vehicle: Vehicle) {
   const type = (vehicle.vehicle_type || "").toLowerCase();
-  const seed = vehicle.id || vehicle.plate || vehicle.vin;
+  const seed = vehicle.id || vehicle.plate || vehicle.vin || "vehiculo";
 
   if (type.includes("motocicleta")) {
     return "🏍️";
@@ -1756,7 +1850,8 @@ function serviceVehicleLabel(service: ServiceRecord) {
   if (!vehicle) {
     return "Vehiculo";
   }
-  return `${vehicle.make} ${vehicle.model_line}${vehicle.model_year ? ` ${vehicle.model_year}` : ""} - ${vehicle.plate || vehicle.vin}`;
+  const name = [vehicle.make, vehicle.model_line, vehicle.model_year].filter(Boolean).join(" ").trim();
+  return `${name || "Vehiculo"} - ${vehicle.plate || vehicle.vin || "Sin placa"}`;
 }
 
 function getUpcomingServices(services: ServiceRecord[], vehicles: Vehicle[], dailyKm: number) {
