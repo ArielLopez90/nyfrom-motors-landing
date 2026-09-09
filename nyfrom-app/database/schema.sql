@@ -165,10 +165,87 @@ create table if not exists public.wishlist_items (
   constraint wishlist_items_feedback_check check (char_length(trim(feedback)) between 3 and 1000)
 );
 
+create table if not exists public.dealers (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null unique references auth.users(id) on delete cascade,
+  business_name text not null,
+  contact_phone text,
+  address text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.dealer_vehicle_records (
+  id uuid primary key default gen_random_uuid(),
+  dealer_id uuid not null references public.dealers(id) on delete cascade,
+  customer_name text,
+  customer_phone text,
+  customer_email text,
+  plate text,
+  vin text,
+  make text,
+  model_line text,
+  model_year integer,
+  engine text,
+  mileage numeric,
+  mileage_unit text not null default 'km',
+  service_type text not null,
+  service_date date not null default current_date,
+  estimated_cost numeric,
+  notes text,
+  claim_code text not null unique default encode(gen_random_bytes(12), 'hex'),
+  claimed_by_user_id uuid references auth.users(id) on delete set null,
+  claimed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint dealer_vehicle_records_vin_length check (vin is null or char_length(vin) between 6 and 17),
+  constraint dealer_vehicle_records_model_year_check check (model_year is null or model_year between 1900 and 2100),
+  constraint dealer_vehicle_records_mileage_check check (mileage is null or mileage >= 0),
+  constraint dealer_vehicle_records_mileage_unit_check check (mileage_unit in ('km', 'mi')),
+  constraint dealer_vehicle_records_estimated_cost_check check (estimated_cost is null or estimated_cost >= 0)
+);
+
+alter table public.dealers add column if not exists contact_phone text;
+alter table public.dealers add column if not exists address text;
+
+alter table public.dealer_vehicle_records add column if not exists customer_name text;
+alter table public.dealer_vehicle_records add column if not exists customer_phone text;
+alter table public.dealer_vehicle_records add column if not exists customer_email text;
+alter table public.dealer_vehicle_records add column if not exists plate text;
+alter table public.dealer_vehicle_records add column if not exists vin text;
+alter table public.dealer_vehicle_records add column if not exists make text;
+alter table public.dealer_vehicle_records add column if not exists model_line text;
+alter table public.dealer_vehicle_records add column if not exists model_year integer;
+alter table public.dealer_vehicle_records add column if not exists engine text;
+alter table public.dealer_vehicle_records add column if not exists mileage numeric;
+alter table public.dealer_vehicle_records add column if not exists mileage_unit text not null default 'km';
+alter table public.dealer_vehicle_records add column if not exists service_type text not null default 'Mantenimiento General';
+alter table public.dealer_vehicle_records add column if not exists service_date date not null default current_date;
+alter table public.dealer_vehicle_records add column if not exists estimated_cost numeric;
+alter table public.dealer_vehicle_records add column if not exists notes text;
+alter table public.dealer_vehicle_records add column if not exists claim_code text not null default encode(gen_random_bytes(12), 'hex');
+alter table public.dealer_vehicle_records add column if not exists claimed_by_user_id uuid references auth.users(id) on delete set null;
+alter table public.dealer_vehicle_records add column if not exists claimed_at timestamptz;
+alter table public.dealer_vehicle_records alter column mileage type numeric using mileage::numeric;
+
+alter table public.dealer_vehicle_records drop constraint if exists dealer_vehicle_records_vin_length;
+alter table public.dealer_vehicle_records drop constraint if exists dealer_vehicle_records_model_year_check;
+alter table public.dealer_vehicle_records drop constraint if exists dealer_vehicle_records_mileage_check;
+alter table public.dealer_vehicle_records drop constraint if exists dealer_vehicle_records_mileage_unit_check;
+alter table public.dealer_vehicle_records drop constraint if exists dealer_vehicle_records_estimated_cost_check;
+
+alter table public.dealer_vehicle_records add constraint dealer_vehicle_records_vin_length check (vin is null or char_length(vin) between 6 and 17);
+alter table public.dealer_vehicle_records add constraint dealer_vehicle_records_model_year_check check (model_year is null or model_year between 1900 and 2100);
+alter table public.dealer_vehicle_records add constraint dealer_vehicle_records_mileage_check check (mileage is null or mileage >= 0);
+alter table public.dealer_vehicle_records add constraint dealer_vehicle_records_mileage_unit_check check (mileage_unit in ('km', 'mi'));
+alter table public.dealer_vehicle_records add constraint dealer_vehicle_records_estimated_cost_check check (estimated_cost is null or estimated_cost >= 0);
+
 alter table public.profiles enable row level security;
 alter table public.vehicles enable row level security;
 alter table public.service_records enable row level security;
 alter table public.wishlist_items enable row level security;
+alter table public.dealers enable row level security;
+alter table public.dealer_vehicle_records enable row level security;
 
 drop policy if exists "Users can read their profile" on public.profiles;
 drop policy if exists "Users can insert their profile" on public.profiles;
@@ -184,6 +261,15 @@ drop policy if exists "Users can update their service records" on public.service
 drop policy if exists "Users can delete their service records" on public.service_records;
 drop policy if exists "Users can read their wishlist items" on public.wishlist_items;
 drop policy if exists "Users can insert their wishlist items" on public.wishlist_items;
+drop policy if exists "Dealers can read their dealer profile" on public.dealers;
+drop policy if exists "Dealers can insert their dealer profile" on public.dealers;
+drop policy if exists "Dealers can update their dealer profile" on public.dealers;
+drop policy if exists "Customers can read dealers from claimed records" on public.dealers;
+drop policy if exists "Dealers can read their own records" on public.dealer_vehicle_records;
+drop policy if exists "Dealers can insert their own records" on public.dealer_vehicle_records;
+drop policy if exists "Dealers can update their own records" on public.dealer_vehicle_records;
+drop policy if exists "Customers can claim open dealer records" on public.dealer_vehicle_records;
+drop policy if exists "Customers can read claimed dealer records" on public.dealer_vehicle_records;
 
 create policy "Users can read their profile"
   on public.profiles
@@ -280,6 +366,90 @@ create policy "Users can insert their wishlist items"
   to authenticated
   with check (auth.uid() = user_id);
 
+create policy "Dealers can read their dealer profile"
+  on public.dealers
+  for select
+  to authenticated
+  using (auth.uid() = user_id);
+
+create policy "Dealers can insert their dealer profile"
+  on public.dealers
+  for insert
+  to authenticated
+  with check (auth.uid() = user_id);
+
+create policy "Dealers can update their dealer profile"
+  on public.dealers
+  for update
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "Customers can read dealers from claimed records"
+  on public.dealers
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.dealer_vehicle_records
+      where dealer_vehicle_records.dealer_id = dealers.id
+        and dealer_vehicle_records.claimed_by_user_id = auth.uid()
+    )
+  );
+
+create policy "Dealers can read their own records"
+  on public.dealer_vehicle_records
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.dealers
+      where dealers.id = dealer_vehicle_records.dealer_id
+        and dealers.user_id = auth.uid()
+    )
+  );
+
+create policy "Dealers can insert their own records"
+  on public.dealer_vehicle_records
+  for insert
+  to authenticated
+  with check (
+    exists (
+      select 1
+      from public.dealers
+      where dealers.id = dealer_vehicle_records.dealer_id
+        and dealers.user_id = auth.uid()
+    )
+  );
+
+create policy "Dealers can update their own records"
+  on public.dealer_vehicle_records
+  for update
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.dealers
+      where dealers.id = dealer_vehicle_records.dealer_id
+        and dealers.user_id = auth.uid()
+    )
+  );
+
+create policy "Customers can claim open dealer records"
+  on public.dealer_vehicle_records
+  for update
+  to authenticated
+  using (claimed_by_user_id is null)
+  with check (claimed_by_user_id = auth.uid());
+
+create policy "Customers can read claimed dealer records"
+  on public.dealer_vehicle_records
+  for select
+  to authenticated
+  using (claimed_by_user_id = auth.uid());
+
 create index if not exists vehicles_user_id_created_at_idx
   on public.vehicles (user_id, created_at desc);
 
@@ -291,3 +461,15 @@ create index if not exists service_records_vehicle_id_idx
 
 create index if not exists wishlist_items_user_id_created_at_idx
   on public.wishlist_items (user_id, created_at desc);
+
+create index if not exists dealers_user_id_idx
+  on public.dealers (user_id);
+
+create index if not exists dealer_vehicle_records_dealer_id_created_at_idx
+  on public.dealer_vehicle_records (dealer_id, created_at desc);
+
+create index if not exists dealer_vehicle_records_claim_code_idx
+  on public.dealer_vehicle_records (claim_code);
+
+create index if not exists dealer_vehicle_records_claimed_by_user_id_idx
+  on public.dealer_vehicle_records (claimed_by_user_id, service_date desc);

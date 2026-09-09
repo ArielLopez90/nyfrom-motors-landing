@@ -53,6 +53,43 @@ type ServiceRecord = {
   } | null;
 };
 
+type Dealer = {
+  id: string;
+  user_id: string;
+  business_name: string;
+  contact_phone: string | null;
+  address: string | null;
+};
+
+type DealerVehicleRecord = {
+  id: string;
+  dealer_id: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  customer_email: string | null;
+  plate: string | null;
+  vin: string | null;
+  make: string | null;
+  model_line: string | null;
+  model_year: number | null;
+  engine: string | null;
+  mileage: number | null;
+  mileage_unit: "km" | "mi";
+  service_type: string;
+  service_date: string;
+  estimated_cost: number | null;
+  notes: string | null;
+  claim_code: string;
+  claimed_by_user_id: string | null;
+  claimed_at: string | null;
+  created_at: string;
+  dealers?: {
+    business_name: string;
+    contact_phone: string | null;
+  } | null;
+};
+
+type UserMode = "customer" | "dealer";
 type AppView = "dashboard" | "profile" | "vehicles" | "services" | "vehicle3d";
 type ActivityMetadata = Record<string, string | number | boolean | null>;
 type BlueprintPart = {
@@ -96,6 +133,10 @@ export function NyfromMvp() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [services, setServices] = useState<ServiceRecord[]>([]);
+  const [claimedDealerRecords, setClaimedDealerRecords] = useState<DealerVehicleRecord[]>([]);
+  const [dealer, setDealer] = useState<Dealer | null>(null);
+  const [dealerRecords, setDealerRecords] = useState<DealerVehicleRecord[]>([]);
+  const [appMode, setAppMode] = useState<UserMode>("customer");
   const [status, setStatus] = useState("Listo para empezar.");
   const [loading, setLoading] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
@@ -104,6 +145,7 @@ export function NyfromMvp() {
   const [selectedServiceVehicleId, setSelectedServiceVehicleId] = useState("");
   const [historyVehicleId, setHistoryVehicleId] = useState("all");
   const [activeView, setActiveView] = useState<AppView>("profile");
+  const [latestClaimLink, setLatestClaimLink] = useState("");
   const trackedOpenForUser = useRef<string | null>(null);
 
   useEffect(() => {
@@ -127,9 +169,19 @@ export function NyfromMvp() {
   useEffect(() => {
     if (user) {
       void loadData();
+      void loadDealerData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  useEffect(() => {
+    if (!user || appMode !== "customer") {
+      return;
+    }
+
+    void claimRecordFromUrl();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, appMode]);
 
   useEffect(() => {
     if (!user || trackedOpenForUser.current === user.id) {
@@ -142,7 +194,7 @@ export function NyfromMvp() {
   }, [user]);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || appMode !== "customer") {
       return;
     }
 
@@ -157,7 +209,7 @@ export function NyfromMvp() {
     if (nextView && activeView !== nextView) {
       queueMicrotask(() => setActiveView(nextView));
     }
-  }, [activeView, user, profile?.driving_distance, vehicles.length]);
+  }, [activeView, appMode, user, profile?.driving_distance, vehicles.length]);
 
   const dailyKm = getDailyKm(profile);
   const suggestedServiceDate = getSuggestedServiceDate(
@@ -182,7 +234,7 @@ export function NyfromMvp() {
       return;
     }
 
-    const [profileResult, vehiclesResult, servicesResult] = await Promise.all([
+    const [profileResult, vehiclesResult, servicesResult, claimedDealerRecordsResult] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", user.id).maybeSingle(),
       supabase
         .from("vehicles")
@@ -195,6 +247,12 @@ export function NyfromMvp() {
         .select(
           "id, vehicle_id, service_type, service_date, mileage, recommended_interval_km, estimated_cost, notes, vehicles(plate, make, model_line, model_year, vin)",
         )
+        .order("service_date", { ascending: false })
+        .limit(60),
+      supabase
+        .from("dealer_vehicle_records")
+        .select("*, dealers(business_name, contact_phone)")
+        .eq("claimed_by_user_id", user.id)
         .order("service_date", { ascending: false })
         .limit(60),
     ]);
@@ -214,9 +272,172 @@ export function NyfromMvp() {
       return;
     }
 
+    if (claimedDealerRecordsResult.error) {
+      console.warn("No se pudo cargar historial de dealers:", claimedDealerRecordsResult.error.message);
+    }
+
     setProfile(profileResult.data as Profile | null);
     setVehicles(vehiclesResult.data ?? []);
     setServices(normalizeServices(servicesResult.data ?? []));
+    setClaimedDealerRecords((claimedDealerRecordsResult.data ?? []) as DealerVehicleRecord[]);
+  }
+
+  async function loadDealerData() {
+    if (!supabase || !user) {
+      return;
+    }
+
+    const dealerResult = await supabase.from("dealers").select("*").eq("user_id", user.id).maybeSingle();
+
+    if (dealerResult.error) {
+      console.warn("No se pudo cargar dealer:", dealerResult.error.message);
+      return;
+    }
+
+    const currentDealer = dealerResult.data as Dealer | null;
+    setDealer(currentDealer);
+
+    if (!currentDealer) {
+      setDealerRecords([]);
+      return;
+    }
+
+    const recordsResult = await supabase
+      .from("dealer_vehicle_records")
+      .select("*")
+      .eq("dealer_id", currentDealer.id)
+      .order("created_at", { ascending: false })
+      .limit(80);
+
+    if (recordsResult.error) {
+      console.warn("No se pudieron cargar registros de dealer:", recordsResult.error.message);
+      return;
+    }
+
+    setDealerRecords((recordsResult.data ?? []) as DealerVehicleRecord[]);
+  }
+
+  async function claimRecordFromUrl() {
+    if (!supabase || !user || typeof window === "undefined") {
+      return;
+    }
+
+    const claimCode = new URLSearchParams(window.location.search).get("claim");
+
+    if (!claimCode) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from("dealer_vehicle_records")
+      .update({ claimed_by_user_id: user.id, claimed_at: new Date().toISOString() })
+      .eq("claim_code", claimCode)
+      .is("claimed_by_user_id", null);
+
+    if (error) {
+      setStatus(`No se pudo reclamar el historial: ${error.message}`);
+      return;
+    }
+
+    window.history.replaceState({}, "", window.location.pathname);
+    setStatus("Historial reclamado. Ya aparece en tu cuenta.");
+    void trackActivity("dealer_record_claimed");
+    await loadData();
+  }
+
+  async function saveDealerProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!supabase || !user) {
+      return;
+    }
+
+    const formData = new FormData(event.currentTarget);
+    const payload = {
+      user_id: user.id,
+      business_name: String(formData.get("business_name") ?? "").trim(),
+      contact_phone: String(formData.get("contact_phone") ?? "").trim() || null,
+      address: String(formData.get("address") ?? "").trim() || null,
+    };
+
+    if (!payload.business_name) {
+      setStatus("Escribe el nombre del taller para activar modo dealer.");
+      return;
+    }
+
+    const { error } = await supabase.from("dealers").upsert(payload, { onConflict: "user_id" });
+
+    if (error) {
+      setStatus(`No se pudo guardar el dealer: ${error.message}`);
+      return;
+    }
+
+    setStatus("Perfil de dealer guardado.");
+    void trackActivity("dealer_profile_updated");
+    await loadDealerData();
+  }
+
+  async function saveDealerRecord(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!supabase || !dealer) {
+      setStatus("Primero guarda el perfil del taller.");
+      return;
+    }
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const mileageUnit = normalizeMileageUnit(formData.get("mileage_unit"));
+    const mileage = getMileageInKm(
+      formData.get("mileage_km"),
+      formData.get("mileage_miles"),
+      mileageUnit,
+    );
+    const serviceType = String(formData.get("service_type") ?? "Mantenimiento General");
+    const payload = {
+      dealer_id: dealer.id,
+      customer_name: String(formData.get("customer_name") ?? "").trim() || null,
+      customer_phone: String(formData.get("customer_phone") ?? "").trim() || null,
+      customer_email: String(formData.get("customer_email") ?? "").trim().toLowerCase() || null,
+      plate: String(formData.get("plate") ?? "").trim().toUpperCase() || null,
+      vin: String(formData.get("vin") ?? "").trim().toUpperCase() || null,
+      make: String(formData.get("make") ?? "").trim() || null,
+      model_line: String(formData.get("model_line") ?? "").trim() || null,
+      model_year: parseOptionalNumber(formData.get("model_year")),
+      engine: String(formData.get("engine") ?? "").trim() || null,
+      mileage,
+      mileage_unit: mileageUnit,
+      service_type: serviceType,
+      service_date: String(formData.get("service_date") ?? today),
+      estimated_cost: parseOptionalNumber(formData.get("estimated_cost")),
+      notes: String(formData.get("notes") ?? "").trim() || null,
+    };
+
+    const { data, error } = await supabase
+      .from("dealer_vehicle_records")
+      .insert(payload)
+      .select("*")
+      .single();
+
+    if (error) {
+      setStatus(`No se pudo guardar el registro del dealer: ${error.message}`);
+      return;
+    }
+
+    const record = data as DealerVehicleRecord;
+    const claimLink = typeof window === "undefined"
+      ? record.claim_code
+      : `${window.location.origin}?claim=${record.claim_code}`;
+
+    setLatestClaimLink(claimLink);
+    setStatus("Registro guardado. Comparte el link o QR con el cliente.");
+    void trackActivity("dealer_service_record_created", {
+      service_type: serviceType,
+      has_customer_phone: Boolean(payload.customer_phone),
+      has_customer_email: Boolean(payload.customer_email),
+    });
+    form.reset();
+    await loadDealerData();
   }
 
   async function trackActivity(eventName: string, metadata: ActivityMetadata = {}) {
@@ -286,6 +507,9 @@ export function NyfromMvp() {
     setProfile(null);
     setVehicles([]);
     setServices([]);
+    setDealer(null);
+    setDealerRecords([]);
+    setClaimedDealerRecords([]);
     setStatus("Sesion cerrada.");
   }
 
@@ -669,6 +893,28 @@ export function NyfromMvp() {
         </div>
       </header>
 
+      <section className="mb-5 grid gap-2 rounded-lg border border-white/12 bg-[#1d2024] p-2 shadow-xl shadow-black/20 sm:grid-cols-2">
+        <TabButton active={appMode === "customer"} onClick={() => setAppMode("customer")}>
+          Cliente
+        </TabButton>
+        <TabButton active={appMode === "dealer"} onClick={() => setAppMode("dealer")}>
+          Dealer
+        </TabButton>
+      </section>
+
+      {appMode === "dealer" ? (
+        <>
+          <DealerWorkspace
+            dealer={dealer}
+            records={dealerRecords}
+            latestClaimLink={latestClaimLink}
+            onSaveDealerProfile={saveDealerProfile}
+            onSaveDealerRecord={saveDealerRecord}
+          />
+          <StatusMessage message={status} />
+        </>
+      ) : (
+        <>
       <MileageQuickUpdate vehicles={vehicles} onSubmit={saveVehicleMileage} />
 
       <section className="mb-5 grid gap-5 lg:grid-cols-[1fr_360px]">
@@ -872,6 +1118,25 @@ export function NyfromMvp() {
 
       {activeView === "dashboard" ? (
         <>
+      {claimedDealerRecords.length ? (
+      <section className="mb-5">
+        <Panel eyebrow="Nyfrom Certified" title="Historial recibido de dealers">
+          <div className="grid gap-3 md:grid-cols-2">
+            {claimedDealerRecords.map((record) => (
+              <RecordCard key={record.id}>
+                <strong><IconText icon="🏁">{dealerRecordVehicleLabel(record)}</IconText></strong>
+                <span>{record.service_type} - {formatDate(record.service_date)}</span>
+                <span>{record.dealers?.business_name || "Dealer Nyfrom"}{record.dealers?.contact_phone ? ` - ${record.dealers.contact_phone}` : ""}</span>
+                <span>{record.mileage ? formatMileageBothUnits(record.mileage) : "Kilometraje pendiente"}</span>
+                <span>Costo registrado: {formatMoney(record.estimated_cost)}</span>
+                <span>{record.notes || "Sin notas"}</span>
+              </RecordCard>
+            ))}
+          </div>
+        </Panel>
+      </section>
+      ) : null}
+
       <section className="mb-5">
         <Panel eyebrow="Estado" title="Vida util por servicio">
           <ServiceHealthList items={healthItems} />
@@ -1022,6 +1287,8 @@ export function NyfromMvp() {
       ) : null}
 
       <StatusMessage message={status} />
+        </>
+      )}
     </main>
   );
 }
@@ -1039,6 +1306,162 @@ function BrandHeader({ compact = false }: { compact?: boolean }) {
           Todo lo relacionado a tu vehiculo en un solo lugar.
         </p>
       </div>
+    </div>
+  );
+}
+
+function DealerWorkspace({
+  dealer,
+  records,
+  latestClaimLink,
+  onSaveDealerProfile,
+  onSaveDealerRecord,
+}: {
+  dealer: Dealer | null;
+  records: DealerVehicleRecord[];
+  latestClaimLink: string;
+  onSaveDealerProfile: (event: FormEvent<HTMLFormElement>) => void;
+  onSaveDealerRecord: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const claimedRecords = records.filter((record) => record.claimed_by_user_id);
+  const openRecords = records.filter((record) => !record.claimed_by_user_id);
+  const monthRevenue = records
+    .filter((record) => isThisMonth(record.service_date))
+    .reduce((sum, record) => sum + Number(record.estimated_cost ?? 0), 0);
+
+  return (
+    <div className="grid gap-5">
+      <section className="grid gap-5 lg:grid-cols-[1fr_380px]">
+        <Panel eyebrow="Dealer Hub" title={dealer?.business_name || "Activa tu taller"}>
+          <div className="grid gap-3 text-sm text-zinc-300 sm:grid-cols-3">
+            <MetricCard icon="🧰" label="Servicios" value={records.length.toString()} />
+            <MetricCard icon="✓" label="Reclamados" value={claimedRecords.length.toString()} />
+            <MetricCard icon="💰" label="Mes actual" value={formatMoney(monthRevenue)} />
+          </div>
+          <p className="mt-5 text-sm font-bold text-zinc-400">
+            Registra el servicio, entrega el link al cliente y su historial queda listo para reclamarlo en Nyfrom.
+          </p>
+        </Panel>
+
+        <Panel eyebrow="Perfil dealer" title="Datos del taller">
+          <form className="grid gap-4" onSubmit={onSaveDealerProfile}>
+            <TextField label="Nombre del taller" name="business_name" required defaultValue={dealer?.business_name ?? ""} />
+            <TextField label="Telefono" name="contact_phone" defaultValue={dealer?.contact_phone ?? ""} />
+            <TextField label="Direccion" name="address" defaultValue={dealer?.address ?? ""} />
+            <button className="min-h-12 rounded-lg bg-red-600 px-5 font-black text-white" type="submit">
+              Guardar dealer
+            </button>
+          </form>
+        </Panel>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
+        <Panel eyebrow="Intake" title="Registrar servicio para cliente">
+          <form className="grid gap-4" onSubmit={onSaveDealerRecord}>
+            <div className="grid gap-4 md:grid-cols-3">
+              <TextField label="Cliente" name="customer_name" />
+              <TextField label="Telefono cliente" name="customer_phone" />
+              <TextField label="Correo cliente" name="customer_email" type="email" />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <TextField label="Placa" name="plate" />
+              <TextField label="VIN" name="vin" maxLength={17} />
+              <TextField label="Marca" name="make" />
+              <TextField label="Linea" name="model_line" />
+              <TextField label="Modelo" name="model_year" type="number" min={1900} />
+              <TextField label="Motor" name="engine" />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <SelectField label="Tipo de servicio" name="service_type" defaultValue="Mantenimiento General">
+                {serviceTypes.map((type) => <option key={type} value={type}>{serviceIcon(type)} {type}</option>)}
+              </SelectField>
+              <TextField label="Fecha" name="service_date" type="date" required defaultValue={today} />
+              <SelectField label="Unidad principal" name="mileage_unit" defaultValue="km">
+                <option value="km">Kilometros</option>
+                <option value="mi">Millas</option>
+              </SelectField>
+              <TextField label="Monto cobrado (Q)" name="estimated_cost" type="number" min={0} step="any" />
+              <TextField label="Kilometraje (km)" name="mileage_km" type="number" min={0} step="any" />
+              <TextField label="Millaje (mi)" name="mileage_miles" type="number" min={0} step="any" />
+            </div>
+            <label className="grid gap-2 text-sm font-bold text-zinc-200">
+              Notas del servicio
+              <textarea
+                className="min-h-28 rounded-lg border border-white/12 bg-black/25 px-4 py-3 text-white outline-none focus:border-red-300"
+                name="notes"
+                placeholder="Repuestos, diagnostico, garantia, recomendacion o proxima visita."
+              />
+            </label>
+            <button className="min-h-12 rounded-lg bg-red-600 px-5 font-black text-white disabled:opacity-50" type="submit" disabled={!dealer}>
+              Guardar y generar link
+            </button>
+          </form>
+        </Panel>
+
+        <div className="grid content-start gap-5">
+          <Panel eyebrow="Cliente" title="Link de reclamo">
+            {latestClaimLink ? (
+              <ClaimLinkCard claimLink={latestClaimLink} />
+            ) : (
+              <EmptyState text="Cuando guardes un servicio, aqui aparecera el link para que el cliente reclame su historial." />
+            )}
+          </Panel>
+
+          <Panel eyebrow="Pendientes" title="Clientes por reclamar">
+            <div className="grid max-h-[420px] gap-3 overflow-auto pr-1">
+              {openRecords.length ? (
+                openRecords.map((record) => (
+                  <RecordCard key={record.id}>
+                    <strong>{dealerRecordVehicleLabel(record)}</strong>
+                    <span>{record.customer_name || record.customer_phone || record.customer_email || "Cliente pendiente"}</span>
+                    <span>{record.service_type} - {formatDate(record.service_date)}</span>
+                    <span>Codigo: {record.claim_code}</span>
+                  </RecordCard>
+                ))
+              ) : (
+                <EmptyState text="No hay registros pendientes de reclamo." />
+              )}
+            </div>
+          </Panel>
+        </div>
+      </section>
+
+      <Panel eyebrow="Historial dealer" title="Servicios registrados">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {records.length ? (
+            records.map((record) => (
+              <RecordCard key={record.id}>
+                <strong><IconText icon={record.claimed_by_user_id ? "✓" : "⏳"}>{dealerRecordVehicleLabel(record)}</IconText></strong>
+                <span>{record.customer_name || record.customer_phone || record.customer_email || "Cliente pendiente"}</span>
+                <span>{record.service_type} - {formatDate(record.service_date)}</span>
+                <span>{record.mileage ? formatMileageBothUnits(record.mileage) : "Kilometraje pendiente"}</span>
+                <span>{record.claimed_by_user_id ? "Reclamado por cliente" : "Pendiente de reclamo"}</span>
+              </RecordCard>
+            ))
+          ) : (
+            <EmptyState text="Todavia no hay servicios registrados por este dealer." />
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function ClaimLinkCard({ claimLink }: { claimLink: string }) {
+  const claimCode = claimLink.includes("claim=") ? claimLink.split("claim=")[1] : claimLink;
+
+  return (
+    <div className="grid gap-4">
+      <div className="rounded-lg border border-red-300/30 bg-red-950/25 p-5 text-center">
+        <p className="text-xs font-black uppercase text-red-200">Codigo de reclamo</p>
+        <strong className="mt-2 block break-all font-mono text-xl text-white">{claimCode}</strong>
+      </div>
+      <div className="rounded-lg border border-white/12 bg-black/25 p-4">
+        <p className="break-all text-sm font-bold text-zinc-200">{claimLink}</p>
+      </div>
+      <p className="text-sm font-bold text-zinc-400">
+        Comparte este link por WhatsApp o abrelo en el telefono del cliente para reclamar el historial.
+      </p>
     </div>
   );
 }
@@ -1852,6 +2275,17 @@ function serviceVehicleLabel(service: ServiceRecord) {
   }
   const name = [vehicle.make, vehicle.model_line, vehicle.model_year].filter(Boolean).join(" ").trim();
   return `${name || "Vehiculo"} - ${vehicle.plate || vehicle.vin || "Sin placa"}`;
+}
+
+function dealerRecordVehicleLabel(record: DealerVehicleRecord) {
+  const name = [record.make, record.model_line, record.model_year].filter(Boolean).join(" ").trim();
+  return `${name || "Vehiculo"} - ${record.plate || record.vin || "Sin placa"}`;
+}
+
+function isThisMonth(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
 }
 
 function getUpcomingServices(services: ServiceRecord[], vehicles: Vehicle[], dailyKm: number) {
