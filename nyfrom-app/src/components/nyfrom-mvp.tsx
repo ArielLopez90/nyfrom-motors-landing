@@ -121,6 +121,8 @@ const serviceTypes = Object.keys(serviceIntervals);
 const usageTypes = ["Particular", "Comercial", "Alquiler", "Carga", "Publico", "Otro"];
 const vehicleTypes = ["Automovil", "Camioneta", "Pickup", "Panel", "Camion", "Motocicleta", "Otro"];
 const today = new Date().toISOString().slice(0, 10);
+const authTimeoutMessage =
+  "Supabase no respondio al iniciar sesion. Puede ser por el limite de Disk IO o porque el proyecto esta lento. Intenta de nuevo en unos minutos y revisa Supabase.";
 
 export function NyfromMvp() {
   const configured = hasSupabaseConfig();
@@ -478,8 +480,16 @@ export function NyfromMvp() {
     try {
       const result =
         authMode === "signin"
-          ? await supabase.auth.signInWithPassword({ email, password })
-          : await supabase.auth.signUp({ email, password });
+          ? await withTimeout(
+              supabase.auth.signInWithPassword({ email, password }),
+              12000,
+              authTimeoutMessage,
+            )
+          : await withTimeout(
+              supabase.auth.signUp({ email, password }),
+              12000,
+              authTimeoutMessage,
+            );
 
       if (result.error) {
         setStatus(getErrorMessage(result.error));
@@ -2168,6 +2178,15 @@ function getErrorMessage(error: unknown) {
   }
 
   return "No se pudo iniciar sesion. Revisa correo, contrasena y configuracion de Supabase.";
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    }),
+  ]);
 }
 
 function parseOptionalNumber(value: FormDataEntryValue | null) {
