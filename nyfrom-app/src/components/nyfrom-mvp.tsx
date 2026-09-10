@@ -475,26 +475,31 @@ export function NyfromMvp() {
     setLoading(true);
     setStatus("Procesando acceso...");
 
-    const result =
-      authMode === "signin"
-        ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password });
+    try {
+      const result =
+        authMode === "signin"
+          ? await supabase.auth.signInWithPassword({ email, password })
+          : await supabase.auth.signUp({ email, password });
 
-    setLoading(false);
+      if (result.error) {
+        setStatus(getErrorMessage(result.error));
+        return;
+      }
 
-    if (result.error) {
-      setStatus(result.error.message);
-      return;
-    }
+      if (authMode === "signup" && !result.data.session) {
+        setStatus("Cuenta creada. Revisa tu correo si Supabase pide confirmacion.");
+        return;
+      }
 
-    if (authMode === "signup" && !result.data.session) {
-      setStatus("Cuenta creada. Revisa tu correo si Supabase pide confirmacion.");
-      return;
-    }
-
-    setStatus("Sesion iniciada.");
-    if (result.data.user) {
-      void trackActivityForUser(result.data.user.id, authMode === "signin" ? "login" : "signup");
+      setUser(result.data.user);
+      setStatus("Sesion iniciada.");
+      if (result.data.user) {
+        void trackActivityForUser(result.data.user.id, authMode === "signin" ? "login" : "signup");
+      }
+    } catch (error) {
+      setStatus(getErrorMessage(error));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -862,7 +867,13 @@ export function NyfromMvp() {
             </button>
           </div>
 
-          <form className="grid gap-4" action={handleAuth}>
+          <form
+            className="grid gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleAuth(new FormData(event.currentTarget));
+            }}
+          >
             <TextField label="Correo" name="email" type="email" required />
             <TextField label="Contrasena" name="password" type="password" required />
             <button
@@ -2137,6 +2148,26 @@ function formatMoney(value: number | null | undefined) {
     style: "currency",
     currency: "GTQ",
   }).format(Number(value ?? 0));
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (typeof error === "object" && error !== null) {
+    const maybeMessage = "message" in error ? error.message : null;
+    if (typeof maybeMessage === "string" && maybeMessage.trim()) {
+      return maybeMessage;
+    }
+
+    const maybeError = "error_description" in error ? error.error_description : null;
+    if (typeof maybeError === "string" && maybeError.trim()) {
+      return maybeError;
+    }
+  }
+
+  return "No se pudo iniciar sesion. Revisa correo, contrasena y configuracion de Supabase.";
 }
 
 function parseOptionalNumber(value: FormDataEntryValue | null) {
