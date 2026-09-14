@@ -253,12 +253,27 @@ alter table public.dealer_vehicle_records add constraint dealer_vehicle_records_
 alter table public.dealer_vehicle_records add constraint dealer_vehicle_records_recommended_interval_check check (recommended_interval_km is null or recommended_interval_km >= 0);
 alter table public.dealer_vehicle_records add constraint dealer_vehicle_records_estimated_cost_check check (estimated_cost is null or estimated_cost >= 0);
 
+create table if not exists public.dealer_record_change_requests (
+  id uuid primary key default gen_random_uuid(),
+  dealer_id uuid not null references public.dealers(id) on delete cascade,
+  dealer_record_id uuid not null references public.dealer_vehicle_records(id) on delete cascade,
+  requested_action text not null,
+  requested_payload jsonb,
+  note text,
+  status text not null default 'pending',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint dealer_record_change_requests_action_check check (requested_action in ('edit', 'delete')),
+  constraint dealer_record_change_requests_status_check check (status in ('pending', 'approved', 'rejected'))
+);
+
 alter table public.profiles enable row level security;
 alter table public.vehicles enable row level security;
 alter table public.service_records enable row level security;
 alter table public.wishlist_items enable row level security;
 alter table public.dealers enable row level security;
 alter table public.dealer_vehicle_records enable row level security;
+alter table public.dealer_record_change_requests enable row level security;
 
 drop policy if exists "Users can read their profile" on public.profiles;
 drop policy if exists "Users can insert their profile" on public.profiles;
@@ -286,6 +301,9 @@ drop policy if exists "Customers can read claimed dealer records" on public.deal
 drop policy if exists "Customers can read matching pending dealer records" on public.dealer_vehicle_records;
 drop policy if exists "Customers can claim matching pending dealer records" on public.dealer_vehicle_records;
 drop policy if exists "Customers can read dealers from matching pending records" on public.dealers;
+drop policy if exists "Dealers can insert record change requests" on public.dealer_record_change_requests;
+drop policy if exists "Dealers can read their record change requests" on public.dealer_record_change_requests;
+drop policy if exists "Customers can read record change requests" on public.dealer_record_change_requests;
 
 create policy "Users can read their profile"
   on public.profiles
@@ -490,6 +508,47 @@ create policy "Customers can claim matching pending dealer records"
   )
   with check (claimed_by_user_id = auth.uid());
 
+create policy "Dealers can insert record change requests"
+  on public.dealer_record_change_requests
+  for insert
+  to authenticated
+  with check (
+    exists (
+      select 1
+      from public.dealers
+      join public.dealer_vehicle_records on dealer_vehicle_records.dealer_id = dealers.id
+      where dealers.id = dealer_record_change_requests.dealer_id
+        and dealer_vehicle_records.id = dealer_record_change_requests.dealer_record_id
+        and dealers.user_id = auth.uid()
+    )
+  );
+
+create policy "Dealers can read their record change requests"
+  on public.dealer_record_change_requests
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.dealers
+      where dealers.id = dealer_record_change_requests.dealer_id
+        and dealers.user_id = auth.uid()
+    )
+  );
+
+create policy "Customers can read record change requests"
+  on public.dealer_record_change_requests
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.dealer_vehicle_records
+      where dealer_vehicle_records.id = dealer_record_change_requests.dealer_record_id
+        and dealer_vehicle_records.claimed_by_user_id = auth.uid()
+    )
+  );
+
 create index if not exists vehicles_user_id_created_at_idx
   on public.vehicles (user_id, created_at desc);
 
@@ -520,3 +579,6 @@ create index if not exists profiles_phone_idx
 create index if not exists dealer_vehicle_records_customer_contact_idx
   on public.dealer_vehicle_records (customer_email, customer_phone)
   where claimed_by_user_id is null;
+
+create index if not exists dealer_record_change_requests_record_status_idx
+  on public.dealer_record_change_requests (dealer_record_id, status, created_at desc);

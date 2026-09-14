@@ -94,6 +94,16 @@ type DealerVehicleRecord = {
   } | null;
 };
 
+type DealerRecordChangeRequest = {
+  id: string;
+  dealer_record_id: string;
+  requested_action: "edit" | "delete";
+  requested_payload: Record<string, unknown> | null;
+  note: string | null;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+};
+
 type UserMode = "customer" | "dealer";
 type AppView = "dashboard" | "profile" | "vehicles" | "services" | "vehicle3d";
 type ActivityMetadata = Record<string, string | number | boolean | null>;
@@ -142,6 +152,7 @@ export function NyfromMvp() {
   const [services, setServices] = useState<ServiceRecord[]>([]);
   const [claimedDealerRecords, setClaimedDealerRecords] = useState<DealerVehicleRecord[]>([]);
   const [pendingDealerRecords, setPendingDealerRecords] = useState<DealerVehicleRecord[]>([]);
+  const [dealerChangeRequests, setDealerChangeRequests] = useState<DealerRecordChangeRequest[]>([]);
   const [dealer, setDealer] = useState<Dealer | null>(null);
   const [dealerRecords, setDealerRecords] = useState<DealerVehicleRecord[]>([]);
   const [appMode, setAppMode] = useState<UserMode>("customer");
@@ -244,7 +255,7 @@ export function NyfromMvp() {
       return;
     }
 
-    const [profileResult, vehiclesResult, servicesResult, claimedDealerRecordsResult] = await Promise.all([
+    const [profileResult, vehiclesResult, servicesResult, claimedDealerRecordsResult, dealerChangeRequestsResult] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", user.id).maybeSingle(),
       supabase
         .from("vehicles")
@@ -265,6 +276,12 @@ export function NyfromMvp() {
         .eq("claimed_by_user_id", user.id)
         .order("service_date", { ascending: false })
         .limit(60),
+      supabase
+        .from("dealer_record_change_requests")
+        .select("*")
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(30),
     ]);
 
     if (profileResult.error) {
@@ -284,6 +301,10 @@ export function NyfromMvp() {
 
     if (claimedDealerRecordsResult.error) {
       console.warn("No se pudo cargar historial de dealers:", claimedDealerRecordsResult.error.message);
+    }
+
+    if (dealerChangeRequestsResult.error) {
+      console.warn("No se pudieron cargar solicitudes de dealers:", dealerChangeRequestsResult.error.message);
     }
 
     const currentProfile = profileResult.data as Profile | null;
@@ -313,6 +334,7 @@ export function NyfromMvp() {
     setVehicles(vehiclesResult.data ?? []);
     setServices(normalizeServices(servicesResult.data ?? []));
     setClaimedDealerRecords((claimedDealerRecordsResult.data ?? []) as DealerVehicleRecord[]);
+    setDealerChangeRequests((dealerChangeRequestsResult.data ?? []) as DealerRecordChangeRequest[]);
     setPendingDealerRecords(pendingDealerRecords);
   }
 
@@ -477,7 +499,7 @@ export function NyfromMvp() {
       recommended_interval_km: nextServiceApplies
         ? parseOptionalNumber(formData.get("recommended_interval_km")) ?? serviceIntervals[serviceType] ?? null
         : null,
-      next_service_date: nextServiceApplies ? String(formData.get("next_service_date") ?? "").trim() || null : null,
+      next_service_date: null,
       estimated_cost: parseOptionalNumber(formData.get("estimated_cost")),
       notes: String(formData.get("notes") ?? "").trim() || null,
     };
@@ -507,6 +529,40 @@ export function NyfromMvp() {
     });
     form.reset();
     await loadDealerData();
+  }
+
+  async function requestDealerRecordChange(record: DealerVehicleRecord, action: "edit" | "delete") {
+    if (!supabase || !dealer) {
+      return;
+    }
+
+    const note = window.prompt(
+      action === "delete"
+        ? "Explica por que quieres borrar este registro para que el cliente lo revise."
+        : "Explica que necesitas cambiar para que el cliente lo revise.",
+    );
+
+    if (note === null) {
+      return;
+    }
+
+    const { error } = await supabase.from("dealer_record_change_requests").insert({
+      dealer_id: dealer.id,
+      dealer_record_id: record.id,
+      requested_action: action,
+      requested_payload: action === "edit" ? record : null,
+      note: note.trim() || null,
+    });
+
+    if (error) {
+      setStatus(`No se pudo enviar la solicitud: ${error.message}`);
+      return;
+    }
+
+    setStatus("Solicitud enviada al perfil del cliente.");
+    void trackActivity("dealer_record_change_requested", {
+      requested_action: action,
+    });
   }
 
   async function trackActivity(eventName: string, metadata: ActivityMetadata = {}) {
@@ -590,6 +646,7 @@ export function NyfromMvp() {
     setVehicles([]);
     setServices([]);
     setPendingDealerRecords([]);
+    setDealerChangeRequests([]);
     setDealer(null);
     setDealerRecords([]);
     setClaimedDealerRecords([]);
@@ -1001,6 +1058,7 @@ export function NyfromMvp() {
             status={status}
             onSaveDealerProfile={saveDealerProfile}
             onSaveDealerRecord={saveDealerRecord}
+            onRequestRecordChange={requestDealerRecordChange}
           />
           <StatusMessage message={status} />
         </>
@@ -1210,11 +1268,28 @@ export function NyfromMvp() {
 
       {activeView === "dashboard" ? (
         <>
+      {dealerChangeRequests.length ? (
+      <section className="mb-5">
+        <Panel eyebrow="Revision" title="Solicitudes de dealers">
+          <div className="grid gap-3 md:grid-cols-2">
+            {dealerChangeRequests.map((request) => (
+              <RecordCard key={request.id}>
+                <strong>{request.requested_action === "delete" ? "Solicitud para borrar registro" : "Solicitud para cambiar registro"}</strong>
+                <span>{request.note || "Sin comentario del dealer."}</span>
+                <span>Estado: {request.status}</span>
+                <span>{formatDate(request.created_at.slice(0, 10))}</span>
+              </RecordCard>
+            ))}
+          </div>
+        </Panel>
+      </section>
+      ) : null}
+
       {pendingDealerRecords.length ? (
       <section className="mb-5">
         <Panel eyebrow="Pendiente" title="Historial encontrado para ti">
           <div className="mb-4 rounded-lg border border-red-400/30 bg-red-950/25 p-4 text-sm font-bold text-red-100">
-            Encontramos registros creados por dealers con tu telefono o correo. Reclama solo los que sean tuyos.
+            Encontramos registros creados por dealers con tu telefono o correo. Reclama solo los que sean tuyos. Para que alimenten tu dashboard, registra el vehiculo con la misma placa o VIN.
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             {pendingDealerRecords.map((record) => (
@@ -1437,6 +1512,7 @@ function DealerWorkspace({
   status,
   onSaveDealerProfile,
   onSaveDealerRecord,
+  onRequestRecordChange,
 }: {
   dealer: Dealer | null;
   records: DealerVehicleRecord[];
@@ -1444,9 +1520,12 @@ function DealerWorkspace({
   status: string;
   onSaveDealerProfile: (event: FormEvent<HTMLFormElement>) => void;
   onSaveDealerRecord: (event: FormEvent<HTMLFormElement>) => void;
+  onRequestRecordChange: (record: DealerVehicleRecord, action: "edit" | "delete") => void;
 }) {
   const claimedRecords = records.filter((record) => record.claimed_by_user_id);
   const openRecords = records.filter((record) => !record.claimed_by_user_id);
+  const customerOptions = getDealerCustomerOptions(records);
+  const vehicleOptions = getDealerVehicleOptions(records);
   const monthRevenue = records
     .filter((record) => isThisMonth(record.service_date))
     .reduce((sum, record) => sum + Number(record.estimated_cost ?? 0), 0);
@@ -1481,16 +1560,37 @@ function DealerWorkspace({
       <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
         <Panel eyebrow="Intake" title="Registrar servicio para cliente">
           <form className="grid gap-4" onSubmit={onSaveDealerRecord}>
+            <datalist id="dealer-customer-names">
+              {customerOptions.map((customer) => <option key={customer.key} value={customer.name} />)}
+            </datalist>
+            <datalist id="dealer-customer-phones">
+              {customerOptions.map((customer) => customer.phone ? <option key={customer.key} value={customer.phone} /> : null)}
+            </datalist>
+            <datalist id="dealer-customer-emails">
+              {customerOptions.map((customer) => customer.email ? <option key={customer.key} value={customer.email} /> : null)}
+            </datalist>
+            <datalist id="dealer-vehicle-plates">
+              {vehicleOptions.map((vehicle) => vehicle.plate ? <option key={vehicle.key} value={vehicle.plate} /> : null)}
+            </datalist>
+            <datalist id="dealer-vehicle-vins">
+              {vehicleOptions.map((vehicle) => vehicle.vin ? <option key={vehicle.key} value={vehicle.vin} /> : null)}
+            </datalist>
+            <datalist id="dealer-vehicle-makes">
+              {vehicleOptions.map((vehicle) => vehicle.make ? <option key={vehicle.key} value={vehicle.make} /> : null)}
+            </datalist>
+            <datalist id="dealer-vehicle-lines">
+              {vehicleOptions.map((vehicle) => vehicle.modelLine ? <option key={vehicle.key} value={vehicle.modelLine} /> : null)}
+            </datalist>
             <div className="grid gap-4 md:grid-cols-3">
-              <TextField label="Cliente" name="customer_name" />
-              <TextField label="Telefono cliente" name="customer_phone" />
-              <TextField label="Correo cliente" name="customer_email" type="email" />
+              <TextField label="Cliente" name="customer_name" list="dealer-customer-names" />
+              <TextField label="Telefono cliente" name="customer_phone" list="dealer-customer-phones" />
+              <TextField label="Correo cliente" name="customer_email" type="email" list="dealer-customer-emails" />
             </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <TextField label="Placa" name="plate" />
-              <TextField label="VIN" name="vin" maxLength={17} />
-              <TextField label="Marca" name="make" />
-              <TextField label="Linea" name="model_line" />
+              <TextField label="Placa" name="plate" list="dealer-vehicle-plates" />
+              <TextField label="VIN" name="vin" maxLength={17} list="dealer-vehicle-vins" />
+              <TextField label="Marca" name="make" list="dealer-vehicle-makes" />
+              <TextField label="Linea" name="model_line" list="dealer-vehicle-lines" />
               <TextField label="Modelo" name="model_year" type="number" min={1900} />
               <TextField label="Motor" name="engine" />
             </div>
@@ -1511,8 +1611,10 @@ function DealerWorkspace({
                 <option value="no">No aplica</option>
               </SelectField>
               <TextField label="Intervalo recomendado (km)" name="recommended_interval_km" type="number" min={0} defaultValue={serviceIntervals["Mantenimiento General"]} />
-              <TextField label="Fecha sugerida" name="next_service_date" type="date" />
             </div>
+            <p className="text-xs font-bold text-zinc-500">
+              La fecha exacta del proximo servicio la calcula el perfil del cliente segun su recorrido diario.
+            </p>
             <label className="grid gap-2 text-sm font-bold text-zinc-200">
               Notas del servicio
               <textarea
@@ -1570,6 +1672,16 @@ function DealerWorkspace({
                 <span>{record.service_type} - {formatDate(record.service_date)}</span>
                 <span>{record.mileage ? formatMileageBothUnits(record.mileage) : "Kilometraje pendiente"}</span>
                 <span>{record.claimed_by_user_id ? "Reclamado por cliente" : "Pendiente de reclamo"}</span>
+                {record.claimed_by_user_id ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button className="rounded-md border border-white/12 px-3 py-2 font-bold text-white" type="button" onClick={() => onRequestRecordChange(record, "edit")}>
+                      Solicitar cambio
+                    </button>
+                    <button className="rounded-md border border-red-400/40 px-3 py-2 font-bold text-red-100" type="button" onClick={() => onRequestRecordChange(record, "delete")}>
+                      Solicitar borrar
+                    </button>
+                  </div>
+                ) : null}
               </RecordCard>
             ))
           ) : (
@@ -1944,6 +2056,7 @@ function TextField({
   maxLength,
   min,
   step,
+  list,
   defaultValue,
 }: {
   label: string;
@@ -1953,6 +2066,7 @@ function TextField({
   maxLength?: number;
   min?: number;
   step?: number | "any";
+  list?: string;
   defaultValue?: string | number;
 }) {
   return (
@@ -1966,6 +2080,7 @@ function TextField({
         maxLength={maxLength}
         min={min}
         step={step}
+        list={list}
         defaultValue={defaultValue}
       />
     </label>
@@ -2458,6 +2573,55 @@ function isThisMonth(value: string) {
   const date = new Date(`${value}T00:00:00`);
   const now = new Date();
   return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+}
+
+function getDealerCustomerOptions(records: DealerVehicleRecord[]) {
+  const customers = new Map<string, { key: string; name: string; phone: string | null; email: string | null }>();
+
+  records.forEach((record) => {
+    const key = record.customer_phone || record.customer_email || record.customer_name;
+
+    if (!key || customers.has(key)) {
+      return;
+    }
+
+    customers.set(key, {
+      key,
+      name: record.customer_name || record.customer_phone || record.customer_email || "",
+      phone: record.customer_phone,
+      email: record.customer_email,
+    });
+  });
+
+  return Array.from(customers.values()).filter((customer) => customer.name);
+}
+
+function getDealerVehicleOptions(records: DealerVehicleRecord[]) {
+  const vehicles = new Map<string, {
+    key: string;
+    plate: string | null;
+    vin: string | null;
+    make: string | null;
+    modelLine: string | null;
+  }>();
+
+  records.forEach((record) => {
+    const key = normalizeVehicleKey(record.vin) || normalizeVehicleKey(record.plate);
+
+    if (!key || vehicles.has(key)) {
+      return;
+    }
+
+    vehicles.set(key, {
+      key,
+      plate: record.plate,
+      vin: record.vin,
+      make: record.make,
+      modelLine: record.model_line,
+    });
+  });
+
+  return Array.from(vehicles.values());
 }
 
 function mapClaimedDealerRecordsToServices(records: DealerVehicleRecord[], vehicles: Vehicle[]): ServiceRecord[] {
