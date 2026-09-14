@@ -43,6 +43,7 @@ type ServiceRecord = {
   service_date: string;
   mileage: number | null;
   recommended_interval_km: number | null;
+  next_service_date?: string | null;
   estimated_cost: number | null;
   notes: string | null;
   vehicles: {
@@ -78,6 +79,9 @@ type DealerVehicleRecord = {
   mileage_unit: "km" | "mi";
   service_type: string;
   service_date: string;
+  next_service_applies: boolean | null;
+  recommended_interval_km: number | null;
+  next_service_date: string | null;
   estimated_cost: number | null;
   notes: string | null;
   claim_code: string;
@@ -216,22 +220,24 @@ export function NyfromMvp() {
   }, [activeView, appMode, user, profile?.driving_distance, vehicles.length]);
 
   const dailyKm = getDailyKm(profile);
+  const dealerServicesForVehicles = mapClaimedDealerRecordsToServices(claimedDealerRecords, vehicles);
+  const allServices = [...services, ...dealerServicesForVehicles];
   const suggestedServiceDate = getSuggestedServiceDate(
-    services,
+    allServices,
     editingService?.vehicle_id ?? selectedServiceVehicleId,
   );
   const filteredServices =
     historyVehicleId === "all"
-      ? services
-      : services.filter((service) => service.vehicle_id === historyVehicleId);
-  const upcomingServices = getUpcomingServices(services, vehicles, dailyKm);
+      ? allServices
+      : allServices.filter((service) => service.vehicle_id === historyVehicleId);
+  const upcomingServices = getUpcomingServices(allServices, vehicles, dailyKm);
   const filteredUpcomingServices =
     historyVehicleId === "all"
       ? upcomingServices
       : upcomingServices.filter((service) => service.vehicleId === historyVehicleId);
-  const healthItems = getServiceHealth(services, vehicles);
+  const healthItems = getServiceHealth(allServices, vehicles);
   const nextMonthCost = getNextMonthEstimatedCost(upcomingServices);
-  const annualCost = getAnnualServiceCost(services);
+  const annualCost = getAnnualServiceCost(allServices);
 
   async function loadData() {
     if (!supabase || !user) {
@@ -249,7 +255,7 @@ export function NyfromMvp() {
       supabase
         .from("service_records")
         .select(
-          "id, vehicle_id, service_type, service_date, mileage, recommended_interval_km, estimated_cost, notes, vehicles(plate, make, model_line, model_year, vin)",
+          "id, vehicle_id, service_type, service_date, mileage, recommended_interval_km, next_service_date, estimated_cost, notes, vehicles(plate, make, model_line, model_year, vin)",
         )
         .order("service_date", { ascending: false })
         .limit(60),
@@ -445,6 +451,7 @@ export function NyfromMvp() {
     const form = event.currentTarget;
     const formData = new FormData(form);
     const mileageUnit = normalizeMileageUnit(formData.get("mileage_unit"));
+    const nextServiceApplies = formData.get("next_service_applies") !== "no";
     const mileage = getMileageInKm(
       formData.get("mileage_km"),
       formData.get("mileage_miles"),
@@ -466,6 +473,11 @@ export function NyfromMvp() {
       mileage_unit: mileageUnit,
       service_type: serviceType,
       service_date: String(formData.get("service_date") ?? today),
+      next_service_applies: nextServiceApplies,
+      recommended_interval_km: nextServiceApplies
+        ? parseOptionalNumber(formData.get("recommended_interval_km")) ?? serviceIntervals[serviceType] ?? null
+        : null,
+      next_service_date: nextServiceApplies ? String(formData.get("next_service_date") ?? "").trim() || null : null,
       estimated_cost: parseOptionalNumber(formData.get("estimated_cost")),
       notes: String(formData.get("notes") ?? "").trim() || null,
     };
@@ -999,7 +1011,7 @@ export function NyfromMvp() {
       <section className="mb-5 grid gap-5 lg:grid-cols-[1fr_360px]">
         <VehicleOverview
           vehicles={vehicles}
-          services={services}
+          services={allServices}
           nextMonthCost={nextMonthCost}
           annualCost={annualCost}
         />
@@ -1389,7 +1401,7 @@ export function NyfromMvp() {
       {activeView === "vehicle3d" ? (
         <section className="mb-5">
           <Panel eyebrow="Plano tecnico" title="Esquema del vehiculo">
-            <VehicleBlueprintView items={healthItems} services={services} vehicles={vehicles} />
+            <VehicleBlueprintView items={healthItems} services={allServices} vehicles={vehicles} />
           </Panel>
         </section>
       ) : null}
@@ -1494,6 +1506,12 @@ function DealerWorkspace({
               <TextField label="Monto cobrado (Q)" name="estimated_cost" type="number" min={0} step="any" />
               <TextField label="Kilometraje (km)" name="mileage_km" type="number" min={0} step="any" />
               <TextField label="Millaje (mi)" name="mileage_miles" type="number" min={0} step="any" />
+              <SelectField label="Proximo servicio" name="next_service_applies" defaultValue="yes">
+                <option value="yes">Si aplica</option>
+                <option value="no">No aplica</option>
+              </SelectField>
+              <TextField label="Intervalo recomendado (km)" name="recommended_interval_km" type="number" min={0} defaultValue={serviceIntervals["Mantenimiento General"]} />
+              <TextField label="Fecha sugerida" name="next_service_date" type="date" />
             </div>
             <label className="grid gap-2 text-sm font-bold text-zinc-200">
               Notas del servicio
@@ -2298,6 +2316,10 @@ function normalizePhoneInput(value: FormDataEntryValue | string | null | undefin
   return digits || null;
 }
 
+function normalizeVehicleKey(value: string | null | undefined) {
+  return String(value ?? "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+}
+
 function normalizeMileageUnit(value: FormDataEntryValue | null): "km" | "mi" {
   return value === "mi" ? "mi" : "km";
 }
@@ -2438,6 +2460,47 @@ function isThisMonth(value: string) {
   return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
 }
 
+function mapClaimedDealerRecordsToServices(records: DealerVehicleRecord[], vehicles: Vehicle[]): ServiceRecord[] {
+  return records.flatMap((record) => {
+    const matchingVehicle = findVehicleForDealerRecord(record, vehicles);
+
+    if (!matchingVehicle) {
+      return [];
+    }
+
+    return [{
+      id: `dealer-${record.id}`,
+      vehicle_id: matchingVehicle.id,
+      service_type: record.service_type,
+      service_date: record.service_date,
+      mileage: record.mileage,
+      recommended_interval_km: record.next_service_applies === false
+        ? null
+        : record.recommended_interval_km ?? serviceIntervals[record.service_type] ?? null,
+      next_service_date: record.next_service_applies === false ? null : record.next_service_date,
+      estimated_cost: record.estimated_cost,
+      notes: [record.notes, "Registro importado de dealer Nyfrom"].filter(Boolean).join(" | "),
+      vehicles: {
+        plate: matchingVehicle.plate,
+        make: matchingVehicle.make,
+        model_line: matchingVehicle.model_line,
+        model_year: matchingVehicle.model_year,
+        vin: matchingVehicle.vin,
+      },
+    }];
+  });
+}
+
+function findVehicleForDealerRecord(record: DealerVehicleRecord, vehicles: Vehicle[]) {
+  const recordVin = normalizeVehicleKey(record.vin);
+  const recordPlate = normalizeVehicleKey(record.plate);
+
+  return vehicles.find((vehicle) => (
+    (recordVin && normalizeVehicleKey(vehicle.vin) === recordVin)
+    || (recordPlate && normalizeVehicleKey(vehicle.plate) === recordPlate)
+  ));
+}
+
 function getUpcomingServices(services: ServiceRecord[], vehicles: Vehicle[], dailyKm: number) {
   if (!dailyKm) {
     return [];
@@ -2447,7 +2510,7 @@ function getUpcomingServices(services: ServiceRecord[], vehicles: Vehicle[], dai
   const latestByVehicleAndType = new Map<string, ServiceRecord>();
 
   services
-    .filter((service) => getServiceInterval(service) && service.mileage)
+    .filter((service) => (getServiceInterval(service) || service.next_service_date) && service.mileage)
     .forEach((service) => {
       const key = `${service.vehicle_id}-${service.service_type}`;
       const current = latestByVehicleAndType.get(key);
@@ -2464,8 +2527,15 @@ function getUpcomingServices(services: ServiceRecord[], vehicles: Vehicle[], dai
       const nextMileage = Number(service.mileage ?? 0) + intervalKm;
       const remainingKm = Math.max(0, nextMileage - currentMileage);
       const days = Math.ceil(remainingKm / dailyKm);
-      const date = remainingKm <= 0 ? new Date() : new Date(`${service.service_date}T00:00:00`);
-      date.setDate(date.getDate() + days);
+      const date = service.next_service_date
+        ? new Date(`${service.next_service_date}T00:00:00`)
+        : remainingKm <= 0
+          ? new Date()
+          : new Date(`${service.service_date}T00:00:00`);
+
+      if (!service.next_service_date) {
+        date.setDate(date.getDate() + days);
+      }
 
       return {
         id: service.id,

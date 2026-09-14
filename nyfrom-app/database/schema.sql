@@ -103,6 +103,7 @@ create table if not exists public.service_records (
   service_date date not null,
   mileage integer,
   recommended_interval_km integer,
+  next_service_date date,
   estimated_cost numeric,
   notes text,
   created_at timestamptz not null default now(),
@@ -129,6 +130,7 @@ create table if not exists public.service_records (
 );
 
 alter table public.service_records add column if not exists recommended_interval_km integer;
+alter table public.service_records add column if not exists next_service_date date;
 alter table public.service_records add column if not exists estimated_cost numeric;
 alter table public.service_records drop constraint if exists service_records_recommended_interval_check;
 alter table public.service_records drop constraint if exists service_records_estimated_cost_check;
@@ -193,6 +195,9 @@ create table if not exists public.dealer_vehicle_records (
   mileage_unit text not null default 'km',
   service_type text not null,
   service_date date not null default current_date,
+  next_service_applies boolean not null default true,
+  recommended_interval_km integer,
+  next_service_date date,
   estimated_cost numeric,
   notes text,
   claim_code text not null unique default encode(gen_random_bytes(12), 'hex'),
@@ -204,6 +209,7 @@ create table if not exists public.dealer_vehicle_records (
   constraint dealer_vehicle_records_model_year_check check (model_year is null or model_year between 1900 and 2100),
   constraint dealer_vehicle_records_mileage_check check (mileage is null or mileage >= 0),
   constraint dealer_vehicle_records_mileage_unit_check check (mileage_unit in ('km', 'mi')),
+  constraint dealer_vehicle_records_recommended_interval_check check (recommended_interval_km is null or recommended_interval_km >= 0),
   constraint dealer_vehicle_records_estimated_cost_check check (estimated_cost is null or estimated_cost >= 0)
 );
 
@@ -223,6 +229,9 @@ alter table public.dealer_vehicle_records add column if not exists mileage numer
 alter table public.dealer_vehicle_records add column if not exists mileage_unit text not null default 'km';
 alter table public.dealer_vehicle_records add column if not exists service_type text not null default 'Mantenimiento General';
 alter table public.dealer_vehicle_records add column if not exists service_date date not null default current_date;
+alter table public.dealer_vehicle_records add column if not exists next_service_applies boolean not null default true;
+alter table public.dealer_vehicle_records add column if not exists recommended_interval_km integer;
+alter table public.dealer_vehicle_records add column if not exists next_service_date date;
 alter table public.dealer_vehicle_records add column if not exists estimated_cost numeric;
 alter table public.dealer_vehicle_records add column if not exists notes text;
 alter table public.dealer_vehicle_records add column if not exists claim_code text not null default encode(gen_random_bytes(12), 'hex');
@@ -234,12 +243,14 @@ alter table public.dealer_vehicle_records drop constraint if exists dealer_vehic
 alter table public.dealer_vehicle_records drop constraint if exists dealer_vehicle_records_model_year_check;
 alter table public.dealer_vehicle_records drop constraint if exists dealer_vehicle_records_mileage_check;
 alter table public.dealer_vehicle_records drop constraint if exists dealer_vehicle_records_mileage_unit_check;
+alter table public.dealer_vehicle_records drop constraint if exists dealer_vehicle_records_recommended_interval_check;
 alter table public.dealer_vehicle_records drop constraint if exists dealer_vehicle_records_estimated_cost_check;
 
 alter table public.dealer_vehicle_records add constraint dealer_vehicle_records_vin_length check (vin is null or char_length(vin) between 6 and 17);
 alter table public.dealer_vehicle_records add constraint dealer_vehicle_records_model_year_check check (model_year is null or model_year between 1900 and 2100);
 alter table public.dealer_vehicle_records add constraint dealer_vehicle_records_mileage_check check (mileage is null or mileage >= 0);
 alter table public.dealer_vehicle_records add constraint dealer_vehicle_records_mileage_unit_check check (mileage_unit in ('km', 'mi'));
+alter table public.dealer_vehicle_records add constraint dealer_vehicle_records_recommended_interval_check check (recommended_interval_km is null or recommended_interval_km >= 0);
 alter table public.dealer_vehicle_records add constraint dealer_vehicle_records_estimated_cost_check check (estimated_cost is null or estimated_cost >= 0);
 
 alter table public.profiles enable row level security;
