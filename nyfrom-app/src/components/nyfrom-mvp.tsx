@@ -10,6 +10,7 @@ type Profile = {
   user_id: string;
   first_name: string | null;
   last_name: string | null;
+  phone: string | null;
   gender: string | null;
   birth_date: string | null;
   driving_distance: number | null;
@@ -136,6 +137,7 @@ export function NyfromMvp() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [services, setServices] = useState<ServiceRecord[]>([]);
   const [claimedDealerRecords, setClaimedDealerRecords] = useState<DealerVehicleRecord[]>([]);
+  const [pendingDealerRecords, setPendingDealerRecords] = useState<DealerVehicleRecord[]>([]);
   const [dealer, setDealer] = useState<Dealer | null>(null);
   const [dealerRecords, setDealerRecords] = useState<DealerVehicleRecord[]>([]);
   const [appMode, setAppMode] = useState<UserMode>("customer");
@@ -278,10 +280,34 @@ export function NyfromMvp() {
       console.warn("No se pudo cargar historial de dealers:", claimedDealerRecordsResult.error.message);
     }
 
-    setProfile(profileResult.data as Profile | null);
+    const currentProfile = profileResult.data as Profile | null;
+    const matchFilters = [
+      user.email ? `customer_email.eq.${user.email.trim().toLowerCase()}` : "",
+      currentProfile?.phone ? `customer_phone.eq.${normalizePhoneInput(currentProfile.phone)}` : "",
+    ].filter(Boolean);
+    let pendingDealerRecords: DealerVehicleRecord[] = [];
+
+    if (matchFilters.length) {
+      const pendingDealerRecordsResult = await supabase
+        .from("dealer_vehicle_records")
+        .select("*, dealers(business_name, contact_phone)")
+        .is("claimed_by_user_id", null)
+        .or(matchFilters.join(","))
+        .order("service_date", { ascending: false })
+        .limit(20);
+
+      if (pendingDealerRecordsResult.error) {
+        console.warn("No se pudo cargar historial pendiente de dealers:", pendingDealerRecordsResult.error.message);
+      } else {
+        pendingDealerRecords = (pendingDealerRecordsResult.data ?? []) as DealerVehicleRecord[];
+      }
+    }
+
+    setProfile(currentProfile);
     setVehicles(vehiclesResult.data ?? []);
     setServices(normalizeServices(servicesResult.data ?? []));
     setClaimedDealerRecords((claimedDealerRecordsResult.data ?? []) as DealerVehicleRecord[]);
+    setPendingDealerRecords(pendingDealerRecords);
   }
 
   async function loadDealerData() {
@@ -347,6 +373,30 @@ export function NyfromMvp() {
     await loadData();
   }
 
+  async function claimMatchingDealerRecord(record: DealerVehicleRecord) {
+    if (!supabase || !user) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from("dealer_vehicle_records")
+      .update({ claimed_by_user_id: user.id, claimed_at: new Date().toISOString() })
+      .eq("id", record.id)
+      .is("claimed_by_user_id", null);
+
+    if (error) {
+      setStatus(`No se pudo reclamar el historial: ${error.message}`);
+      return;
+    }
+
+    setStatus("Historial reclamado por telefono/correo. Ya aparece en tu cuenta.");
+    void trackActivity("dealer_record_claimed_by_contact", {
+      matched_by_phone: Boolean(record.customer_phone && profile?.phone && record.customer_phone === normalizePhoneInput(profile.phone)),
+      matched_by_email: Boolean(record.customer_email && user.email && record.customer_email === user.email.trim().toLowerCase()),
+    });
+    await loadData();
+  }
+
   async function saveDealerProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -367,14 +417,19 @@ export function NyfromMvp() {
       return;
     }
 
-    const { error } = await supabase.from("dealers").upsert(payload, { onConflict: "user_id" });
+    const { data, error } = await supabase
+      .from("dealers")
+      .upsert(payload, { onConflict: "user_id" })
+      .select("*")
+      .single();
 
     if (error) {
       setStatus(`No se pudo guardar el dealer: ${error.message}`);
       return;
     }
 
-    setStatus("Perfil de dealer guardado.");
+    setDealer(data as Dealer);
+    setStatus("Perfil de dealer guardado. Ya puedes registrar servicios y generar links.");
     void trackActivity("dealer_profile_updated");
     await loadDealerData();
   }
@@ -399,7 +454,7 @@ export function NyfromMvp() {
     const payload = {
       dealer_id: dealer.id,
       customer_name: String(formData.get("customer_name") ?? "").trim() || null,
-      customer_phone: String(formData.get("customer_phone") ?? "").trim() || null,
+      customer_phone: normalizePhoneInput(formData.get("customer_phone")),
       customer_email: String(formData.get("customer_email") ?? "").trim().toLowerCase() || null,
       plate: String(formData.get("plate") ?? "").trim().toUpperCase() || null,
       vin: String(formData.get("vin") ?? "").trim().toUpperCase() || null,
@@ -522,6 +577,7 @@ export function NyfromMvp() {
     setProfile(null);
     setVehicles([]);
     setServices([]);
+    setPendingDealerRecords([]);
     setDealer(null);
     setDealerRecords([]);
     setClaimedDealerRecords([]);
@@ -540,6 +596,7 @@ export function NyfromMvp() {
       user_id: user.id,
       first_name: String(formData.get("first_name") ?? "").trim() || null,
       last_name: String(formData.get("last_name") ?? "").trim() || null,
+      phone: normalizePhoneInput(formData.get("phone")),
       gender: String(formData.get("gender") ?? "").trim() || null,
       birth_date: String(formData.get("birth_date") ?? "").trim() || null,
       driving_distance: parseOptionalNumber(formData.get("driving_distance")),
@@ -929,6 +986,7 @@ export function NyfromMvp() {
             dealer={dealer}
             records={dealerRecords}
             latestClaimLink={latestClaimLink}
+            status={status}
             onSaveDealerProfile={saveDealerProfile}
             onSaveDealerRecord={saveDealerRecord}
           />
@@ -977,6 +1035,7 @@ export function NyfromMvp() {
             <div className="grid gap-4 md:grid-cols-2">
               <TextField label="Nombre" name="first_name" defaultValue={profile?.first_name ?? ""} />
               <TextField label="Apellido" name="last_name" defaultValue={profile?.last_name ?? ""} />
+              <TextField label="Telefono" name="phone" type="tel" defaultValue={profile?.phone ?? ""} />
               <SelectField label="Genero" name="gender" defaultValue={profile?.gender ?? ""}>
                 <option value="">Selecciona genero</option>
                 <option value="Masculino">Masculino</option>
@@ -1139,6 +1198,34 @@ export function NyfromMvp() {
 
       {activeView === "dashboard" ? (
         <>
+      {pendingDealerRecords.length ? (
+      <section className="mb-5">
+        <Panel eyebrow="Pendiente" title="Historial encontrado para ti">
+          <div className="mb-4 rounded-lg border border-red-400/30 bg-red-950/25 p-4 text-sm font-bold text-red-100">
+            Encontramos registros creados por dealers con tu telefono o correo. Reclama solo los que sean tuyos.
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {pendingDealerRecords.map((record) => (
+              <RecordCard key={record.id}>
+                <strong><IconText icon="🔎">{dealerRecordVehicleLabel(record)}</IconText></strong>
+                <span>{record.service_type} - {formatDate(record.service_date)}</span>
+                <span>{record.dealers?.business_name || "Dealer Nyfrom"}{record.dealers?.contact_phone ? ` - ${record.dealers.contact_phone}` : ""}</span>
+                <span>{record.mileage ? formatMileageBothUnits(record.mileage) : "Kilometraje pendiente"}</span>
+                <span>Costo registrado: {formatMoney(record.estimated_cost)}</span>
+                <button
+                  className="mt-3 min-h-11 rounded-lg bg-red-600 px-4 font-black text-white"
+                  type="button"
+                  onClick={() => void claimMatchingDealerRecord(record)}
+                >
+                  Reclamar historial
+                </button>
+              </RecordCard>
+            ))}
+          </div>
+        </Panel>
+      </section>
+      ) : null}
+
       {claimedDealerRecords.length ? (
       <section className="mb-5">
         <Panel eyebrow="Nyfrom Certified" title="Historial recibido de dealers">
@@ -1335,12 +1422,14 @@ function DealerWorkspace({
   dealer,
   records,
   latestClaimLink,
+  status,
   onSaveDealerProfile,
   onSaveDealerRecord,
 }: {
   dealer: Dealer | null;
   records: DealerVehicleRecord[];
   latestClaimLink: string;
+  status: string;
   onSaveDealerProfile: (event: FormEvent<HTMLFormElement>) => void;
   onSaveDealerRecord: (event: FormEvent<HTMLFormElement>) => void;
 }) {
@@ -1373,6 +1462,7 @@ function DealerWorkspace({
               Guardar dealer
             </button>
           </form>
+          <StatusMessage message={status} />
         </Panel>
       </section>
 
@@ -1413,6 +1503,11 @@ function DealerWorkspace({
                 placeholder="Repuestos, diagnostico, garantia, recomendacion o proxima visita."
               />
             </label>
+            {!dealer ? (
+              <p className="rounded-lg border border-red-400/30 bg-red-950/25 p-3 text-sm font-bold text-red-100">
+                Guarda primero los datos del taller para activar este formulario.
+              </p>
+            ) : null}
             <button className="min-h-12 rounded-lg bg-red-600 px-5 font-black text-white disabled:opacity-50" type="submit" disabled={!dealer}>
               Guardar y generar link
             </button>
@@ -2196,6 +2291,11 @@ function parseOptionalNumber(value: FormDataEntryValue | null) {
 
   const numberValue = Number(value);
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null;
+}
+
+function normalizePhoneInput(value: FormDataEntryValue | string | null | undefined) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  return digits || null;
 }
 
 function normalizeMileageUnit(value: FormDataEntryValue | null): "km" | "mi" {

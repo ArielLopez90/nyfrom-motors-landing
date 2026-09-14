@@ -4,6 +4,7 @@ create table if not exists public.profiles (
   user_id uuid primary key references auth.users(id) on delete cascade,
   first_name text,
   last_name text,
+  phone text,
   gender text,
   birth_date date,
   driving_distance numeric,
@@ -17,6 +18,7 @@ create table if not exists public.profiles (
 
 alter table public.profiles add column if not exists first_name text;
 alter table public.profiles add column if not exists last_name text;
+alter table public.profiles add column if not exists phone text;
 alter table public.profiles add column if not exists gender text;
 alter table public.profiles add column if not exists birth_date date;
 alter table public.profiles add column if not exists driving_distance numeric;
@@ -270,6 +272,9 @@ drop policy if exists "Dealers can insert their own records" on public.dealer_ve
 drop policy if exists "Dealers can update their own records" on public.dealer_vehicle_records;
 drop policy if exists "Customers can claim open dealer records" on public.dealer_vehicle_records;
 drop policy if exists "Customers can read claimed dealer records" on public.dealer_vehicle_records;
+drop policy if exists "Customers can read matching pending dealer records" on public.dealer_vehicle_records;
+drop policy if exists "Customers can claim matching pending dealer records" on public.dealer_vehicle_records;
+drop policy if exists "Customers can read dealers from matching pending records" on public.dealers;
 
 create policy "Users can read their profile"
   on public.profiles
@@ -398,6 +403,24 @@ create policy "Customers can read dealers from claimed records"
     )
   );
 
+create policy "Customers can read dealers from matching pending records"
+  on public.dealers
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.dealer_vehicle_records
+      left join public.profiles on profiles.user_id = auth.uid()
+      where dealer_vehicle_records.dealer_id = dealers.id
+        and dealer_vehicle_records.claimed_by_user_id is null
+        and (
+          (dealer_vehicle_records.customer_email is not null and dealer_vehicle_records.customer_email = (auth.jwt() ->> 'email'))
+          or (dealer_vehicle_records.customer_phone is not null and dealer_vehicle_records.customer_phone = profiles.phone)
+        )
+    )
+  );
+
 create policy "Dealers can read their own records"
   on public.dealer_vehicle_records
   for select
@@ -450,6 +473,43 @@ create policy "Customers can read claimed dealer records"
   to authenticated
   using (claimed_by_user_id = auth.uid());
 
+create policy "Customers can read matching pending dealer records"
+  on public.dealer_vehicle_records
+  for select
+  to authenticated
+  using (
+    claimed_by_user_id is null
+    and (
+      (customer_email is not null and customer_email = (auth.jwt() ->> 'email'))
+      or exists (
+        select 1
+        from public.profiles
+        where profiles.user_id = auth.uid()
+          and profiles.phone is not null
+          and profiles.phone = dealer_vehicle_records.customer_phone
+      )
+    )
+  );
+
+create policy "Customers can claim matching pending dealer records"
+  on public.dealer_vehicle_records
+  for update
+  to authenticated
+  using (
+    claimed_by_user_id is null
+    and (
+      (customer_email is not null and customer_email = (auth.jwt() ->> 'email'))
+      or exists (
+        select 1
+        from public.profiles
+        where profiles.user_id = auth.uid()
+          and profiles.phone is not null
+          and profiles.phone = dealer_vehicle_records.customer_phone
+      )
+    )
+  )
+  with check (claimed_by_user_id = auth.uid());
+
 create index if not exists vehicles_user_id_created_at_idx
   on public.vehicles (user_id, created_at desc);
 
@@ -473,3 +533,10 @@ create index if not exists dealer_vehicle_records_claim_code_idx
 
 create index if not exists dealer_vehicle_records_claimed_by_user_id_idx
   on public.dealer_vehicle_records (claimed_by_user_id, service_date desc);
+
+create index if not exists profiles_phone_idx
+  on public.profiles (phone);
+
+create index if not exists dealer_vehicle_records_customer_contact_idx
+  on public.dealer_vehicle_records (customer_email, customer_phone)
+  where claimed_by_user_id is null;
