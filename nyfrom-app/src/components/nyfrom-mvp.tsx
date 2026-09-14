@@ -255,7 +255,7 @@ export function NyfromMvp() {
         .limit(60),
       supabase
         .from("dealer_vehicle_records")
-        .select("*, dealers(business_name, contact_phone)")
+        .select("*")
         .eq("claimed_by_user_id", user.id)
         .order("service_date", { ascending: false })
         .limit(60),
@@ -290,7 +290,7 @@ export function NyfromMvp() {
     if (matchFilters.length) {
       const pendingDealerRecordsResult = await supabase
         .from("dealer_vehicle_records")
-        .select("*, dealers(business_name, contact_phone)")
+        .select("*")
         .is("claimed_by_user_id", null)
         .or(matchFilters.join(","))
         .order("service_date", { ascending: false })

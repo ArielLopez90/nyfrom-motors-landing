@@ -390,37 +390,6 @@ create policy "Dealers can update their dealer profile"
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
-create policy "Customers can read dealers from claimed records"
-  on public.dealers
-  for select
-  to authenticated
-  using (
-    exists (
-      select 1
-      from public.dealer_vehicle_records
-      where dealer_vehicle_records.dealer_id = dealers.id
-        and dealer_vehicle_records.claimed_by_user_id = auth.uid()
-    )
-  );
-
-create policy "Customers can read dealers from matching pending records"
-  on public.dealers
-  for select
-  to authenticated
-  using (
-    exists (
-      select 1
-      from public.dealer_vehicle_records
-      left join public.profiles on profiles.user_id = auth.uid()
-      where dealer_vehicle_records.dealer_id = dealers.id
-        and dealer_vehicle_records.claimed_by_user_id is null
-        and (
-          (dealer_vehicle_records.customer_email is not null and dealer_vehicle_records.customer_email = (auth.jwt() ->> 'email'))
-          or (dealer_vehicle_records.customer_phone is not null and dealer_vehicle_records.customer_phone = profiles.phone)
-        )
-    )
-  );
-
 create policy "Dealers can read their own records"
   on public.dealer_vehicle_records
   for select
