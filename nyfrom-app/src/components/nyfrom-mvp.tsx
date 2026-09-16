@@ -231,8 +231,11 @@ export function NyfromMvp() {
   }, [activeView, appMode, user, profile?.driving_distance, vehicles.length]);
 
   const dailyKm = getDailyKm(profile);
-  const dealerServicesForVehicles = mapClaimedDealerRecordsToServices(claimedDealerRecords, vehicles);
-  const allServices = [...services, ...dealerServicesForVehicles];
+  const dealerVehicles = mapClaimedDealerRecordsToVehicles(claimedDealerRecords, vehicles);
+  const allVehicles = [...vehicles, ...dealerVehicles];
+  const dealerServicesForVehicles = mapClaimedDealerRecordsToServices(claimedDealerRecords, allVehicles);
+  const allServices = [...services, ...dealerServicesForVehicles]
+    .sort((a, b) => b.service_date.localeCompare(a.service_date));
   const suggestedServiceDate = getSuggestedServiceDate(
     allServices,
     editingService?.vehicle_id ?? selectedServiceVehicleId,
@@ -241,12 +244,12 @@ export function NyfromMvp() {
     historyVehicleId === "all"
       ? allServices
       : allServices.filter((service) => service.vehicle_id === historyVehicleId);
-  const upcomingServices = getUpcomingServices(allServices, vehicles, dailyKm);
+  const upcomingServices = getUpcomingServices(allServices, allVehicles, dailyKm);
   const filteredUpcomingServices =
     historyVehicleId === "all"
       ? upcomingServices
       : upcomingServices.filter((service) => service.vehicleId === historyVehicleId);
-  const healthItems = getServiceHealth(allServices, vehicles);
+  const healthItems = getServiceHealth(allServices, allVehicles);
   const nextMonthCost = getNextMonthEstimatedCost(upcomingServices);
   const annualCost = getAnnualServiceCost(allServices);
 
@@ -1068,7 +1071,7 @@ export function NyfromMvp() {
 
       <section className="mb-5 grid gap-5 lg:grid-cols-[1fr_360px]">
         <VehicleOverview
-          vehicles={vehicles}
+          vehicles={allVehicles}
           services={allServices}
           nextMonthCost={nextMonthCost}
           annualCost={annualCost}
@@ -1313,25 +1316,6 @@ export function NyfromMvp() {
       </section>
       ) : null}
 
-      {claimedDealerRecords.length ? (
-      <section className="mb-5">
-        <Panel eyebrow="Nyfrom Certified" title="Historial recibido de dealers">
-          <div className="grid gap-3 md:grid-cols-2">
-            {claimedDealerRecords.map((record) => (
-              <RecordCard key={record.id}>
-                <strong><IconText icon="🏁">{dealerRecordVehicleLabel(record)}</IconText></strong>
-                <span>{record.service_type} - {formatDate(record.service_date)}</span>
-                <span>{record.dealers?.business_name || "Dealer Nyfrom"}{record.dealers?.contact_phone ? ` - ${record.dealers.contact_phone}` : ""}</span>
-                <span>{record.mileage ? formatMileageBothUnits(record.mileage) : "Kilometraje pendiente"}</span>
-                <span>Costo registrado: {formatMoney(record.estimated_cost)}</span>
-                <span>{record.notes || "Sin notas"}</span>
-              </RecordCard>
-            ))}
-          </div>
-        </Panel>
-      </section>
-      ) : null}
-
       <section className="mb-5">
         <Panel eyebrow="Estado" title="Vida util por servicio">
           <ServiceHealthList items={healthItems} />
@@ -1343,7 +1327,7 @@ export function NyfromMvp() {
           <div className="mb-4">
             <SelectField label="Filtrar por vehiculo" name="upcoming_filter" value={historyVehicleId} onChange={(event) => setHistoryVehicleId(event.currentTarget.value)}>
               <option value="all">Todos los vehiculos</option>
-              {vehicles.map((vehicle) => (
+              {allVehicles.map((vehicle) => (
                 <option key={vehicle.id} value={vehicle.id}>{vehicleIcon(vehicle)} {vehicleLabel(vehicle)}</option>
               ))}
             </SelectField>
@@ -1361,11 +1345,17 @@ export function NyfromMvp() {
                   <strong className="mt-3 block rounded-lg border border-red-400/40 bg-red-950/30 p-3 text-lg text-red-200">
                     Fecha estimada: {formatDate(item.estimatedDate)}
                   </strong>
-                  <ActionRow>
-                    <button type="button" onClick={() => void completeUpcomingService(item)}>
-                      <ButtonLabel icon="✓">Marcar realizado</ButtonLabel>
-                    </button>
-                  </ActionRow>
+                  {isDealerVirtualVehicleId(item.vehicleId) ? (
+                    <p className="mt-3 rounded-lg border border-white/12 bg-white/5 p-3 text-sm font-bold text-zinc-400">
+                      Importado de dealer. Registra este vehiculo en tu cuenta para marcar servicios realizados manualmente.
+                    </p>
+                  ) : (
+                    <ActionRow>
+                      <button type="button" onClick={() => void completeUpcomingService(item)}>
+                        <ButtonLabel icon="✓">Marcar realizado</ButtonLabel>
+                      </button>
+                    </ActionRow>
+                  )}
                 </RecordCard>
               ))
             ) : (
@@ -1378,7 +1368,7 @@ export function NyfromMvp() {
           <div className="mb-4">
             <SelectField label="Filtrar por vehiculo" name="history_filter" value={historyVehicleId} onChange={(event) => setHistoryVehicleId(event.currentTarget.value)}>
               <option value="all">Todos los vehiculos</option>
-              {vehicles.map((vehicle) => (
+              {allVehicles.map((vehicle) => (
                 <option key={vehicle.id} value={vehicle.id}>{vehicleIcon(vehicle)} {vehicleLabel(vehicle)}</option>
               ))}
             </SelectField>
@@ -1397,15 +1387,19 @@ export function NyfromMvp() {
                   </span>
                   <span>Costo registrado: {formatMoney(service.estimated_cost)}</span>
                   <span>{service.notes || "Sin notas"}</span>
-                  <ActionRow>
-                    <button type="button" onClick={() => {
-                      setEditingService(service);
-                      setSelectedServiceType(service.service_type);
-                      setSelectedServiceVehicleId(service.vehicle_id);
-                      setActiveView("services");
-                    }}><ButtonLabel icon="✏️">Editar</ButtonLabel></button>
-                    <button type="button" onClick={() => void deleteService(service)}><ButtonLabel icon="🗑️">Borrar</ButtonLabel></button>
-                  </ActionRow>
+                  {isDealerImportedService(service) ? (
+                    <span className="font-bold text-red-200">Importado de dealer</span>
+                  ) : (
+                    <ActionRow>
+                      <button type="button" onClick={() => {
+                        setEditingService(service);
+                        setSelectedServiceType(service.service_type);
+                        setSelectedServiceVehicleId(service.vehicle_id);
+                        setActiveView("services");
+                      }}><ButtonLabel icon="✏️">Editar</ButtonLabel></button>
+                      <button type="button" onClick={() => void deleteService(service)}><ButtonLabel icon="🗑️">Borrar</ButtonLabel></button>
+                    </ActionRow>
+                  )}
                 </RecordCard>
               ))
             ) : (
@@ -1418,8 +1412,8 @@ export function NyfromMvp() {
       <section>
         <Panel eyebrow="Vehiculos" title="🚗 Registros guardados">
           <div className="grid gap-3 md:grid-cols-2">
-            {vehicles.length ? (
-              vehicles.map((vehicle) => (
+            {allVehicles.length ? (
+              allVehicles.map((vehicle) => (
                 <RecordCard key={vehicle.id}>
                   <strong><IconText icon={vehicleIcon(vehicle)}>{vehicleLabel(vehicle)}</IconText></strong>
                   <span>VIN: {vehicle.vin || "Pendiente"}</span>
@@ -1434,13 +1428,17 @@ export function NyfromMvp() {
                     {vehicle.vehicle_type ? ` - Tipo: ${vehicle.vehicle_type}` : ""}
                     {vehicle.seats ? ` - ${vehicle.seats} asientos` : ""}
                   </span>
-                  <ActionRow>
-                    <button type="button" onClick={() => {
-                      setEditingVehicle(vehicle);
-                      setActiveView("vehicles");
-                    }}><ButtonLabel icon="✏️">Editar</ButtonLabel></button>
-                    <button type="button" onClick={() => void deleteVehicle(vehicle)}><ButtonLabel icon="🗑️">Borrar</ButtonLabel></button>
-                  </ActionRow>
+                  {isDealerVirtualVehicleId(vehicle.id) ? (
+                    <span className="font-bold text-red-200">Importado de dealer</span>
+                  ) : (
+                    <ActionRow>
+                      <button type="button" onClick={() => {
+                        setEditingVehicle(vehicle);
+                        setActiveView("vehicles");
+                      }}><ButtonLabel icon="✏️">Editar</ButtonLabel></button>
+                      <button type="button" onClick={() => void deleteVehicle(vehicle)}><ButtonLabel icon="🗑️">Borrar</ButtonLabel></button>
+                    </ActionRow>
+                  )}
                 </RecordCard>
               ))
             ) : (
@@ -1476,7 +1474,7 @@ export function NyfromMvp() {
       {activeView === "vehicle3d" ? (
         <section className="mb-5">
           <Panel eyebrow="Plano tecnico" title="Esquema del vehiculo">
-            <VehicleBlueprintView items={healthItems} services={allServices} vehicles={vehicles} />
+            <VehicleBlueprintView items={healthItems} services={allServices} vehicles={allVehicles} />
           </Panel>
         </section>
       ) : null}
@@ -2624,6 +2622,51 @@ function getDealerVehicleOptions(records: DealerVehicleRecord[]) {
   return Array.from(vehicles.values());
 }
 
+function mapClaimedDealerRecordsToVehicles(records: DealerVehicleRecord[], existingVehicles: Vehicle[]): Vehicle[] {
+  const existingKeys = new Set(
+    existingVehicles.flatMap((vehicle) => [
+      normalizeVehicleKey(vehicle.vin),
+      normalizeVehicleKey(vehicle.plate),
+    ]).filter(Boolean),
+  );
+  const vehicles = new Map<string, Vehicle>();
+
+  records.forEach((record) => {
+    const key = getDealerRecordVehicleKey(record);
+
+    if (!key || existingKeys.has(key)) {
+      return;
+    }
+
+    const current = vehicles.get(key);
+    const currentMileage = Math.max(
+      Number(current?.current_mileage ?? 0),
+      Number(record.mileage ?? 0),
+    ) || null;
+
+    vehicles.set(key, {
+      id: getDealerVirtualVehicleId(key),
+      owner_name: record.customer_name || "Cliente Nyfrom",
+      plate: record.plate,
+      vin: record.vin,
+      make: record.make,
+      model_line: record.model_line,
+      model_year: record.model_year,
+      engine: record.engine,
+      usage: null,
+      vehicle_type: "Automovil",
+      seats: null,
+      color: null,
+      cylinders: null,
+      cc: null,
+      current_mileage: currentMileage,
+      current_mileage_unit: "km",
+    });
+  });
+
+  return Array.from(vehicles.values());
+}
+
 function mapClaimedDealerRecordsToServices(records: DealerVehicleRecord[], vehicles: Vehicle[]): ServiceRecord[] {
   return records.flatMap((record) => {
     const matchingVehicle = findVehicleForDealerRecord(record, vehicles);
@@ -2656,13 +2699,32 @@ function mapClaimedDealerRecordsToServices(records: DealerVehicleRecord[], vehic
 }
 
 function findVehicleForDealerRecord(record: DealerVehicleRecord, vehicles: Vehicle[]) {
+  const dealerVehicleId = getDealerVirtualVehicleId(getDealerRecordVehicleKey(record));
   const recordVin = normalizeVehicleKey(record.vin);
   const recordPlate = normalizeVehicleKey(record.plate);
 
   return vehicles.find((vehicle) => (
+    vehicle.id === dealerVehicleId
+    ||
     (recordVin && normalizeVehicleKey(vehicle.vin) === recordVin)
     || (recordPlate && normalizeVehicleKey(vehicle.plate) === recordPlate)
   ));
+}
+
+function getDealerRecordVehicleKey(record: DealerVehicleRecord) {
+  return normalizeVehicleKey(record.vin) || normalizeVehicleKey(record.plate) || `RECORD${record.id}`;
+}
+
+function getDealerVirtualVehicleId(key: string) {
+  return `dealer-vehicle-${key}`;
+}
+
+function isDealerVirtualVehicleId(vehicleId: string) {
+  return vehicleId.startsWith("dealer-vehicle-");
+}
+
+function isDealerImportedService(service: ServiceRecord) {
+  return service.id.startsWith("dealer-") || isDealerVirtualVehicleId(service.vehicle_id);
 }
 
 function getUpcomingServices(services: ServiceRecord[], vehicles: Vehicle[], dailyKm: number) {
