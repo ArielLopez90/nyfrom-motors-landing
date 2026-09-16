@@ -2224,21 +2224,45 @@ function ServiceHealthList({ items }: { items: ReturnType<typeof getServiceHealt
   }
 
   return (
-    <div className="grid gap-3">
-      {items.map((item) => (
-        <article key={item.serviceType} className="rounded-lg border border-white/12 bg-white/5 p-4">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <strong>{item.serviceType}</strong>
-            <span className={`font-black ${item.textColor}`}>{item.percent}%</span>
-          </div>
-          <div className="h-3 overflow-hidden rounded-full bg-black/40">
-            <div className={`h-full rounded-full ${item.barColor}`} style={{ width: `${item.percent}%` }} />
-          </div>
-          <p className="mt-2 text-sm font-bold text-zinc-400">
-            Restante: {item.remainingKm.toLocaleString("es-GT")} km de {item.intervalKm.toLocaleString("es-GT")} km
-          </p>
-        </article>
-      ))}
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {items.map((item) => {
+        const ringColor = item.percent <= 35 ? "#ef4444" : item.percent <= 65 ? "#facc15" : "#10b981";
+        const progressStyle = {
+          background: `conic-gradient(${ringColor} ${item.percent * 3.6}deg, rgba(255,255,255,0.08) 0deg)`,
+        };
+
+        return (
+          <article
+            key={item.serviceType}
+            className="rounded-lg border border-white/12 bg-white/[0.04] p-3 shadow-lg shadow-black/10"
+          >
+            <div className="flex items-center gap-3">
+              <div className="grid h-16 w-16 shrink-0 place-items-center rounded-full" style={progressStyle}>
+                <div className="grid h-12 w-12 place-items-center rounded-full bg-[#1c2025] text-xl shadow-inner shadow-black/40">
+                  {serviceIcon(item.serviceType)}
+                </div>
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <strong className="break-words text-sm leading-tight text-white">{item.serviceType}</strong>
+                  <span className={`text-lg font-black leading-none ${item.textColor}`}>{item.percent}%</span>
+                </div>
+                <p className="mt-1 text-xs font-bold text-zinc-400">
+                  {item.remainingKm.toLocaleString("es-GT")} km restantes
+                </p>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-600">
+                  de {item.intervalKm.toLocaleString("es-GT")} km
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/35">
+              <div className={`h-full rounded-full ${item.barColor}`} style={{ width: `${item.percent}%` }} />
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }
