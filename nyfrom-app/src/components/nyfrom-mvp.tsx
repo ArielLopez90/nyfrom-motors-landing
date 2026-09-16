@@ -163,6 +163,7 @@ export function NyfromMvp() {
   const [selectedServiceType, setSelectedServiceType] = useState("Servicio de Motor");
   const [selectedServiceVehicleId, setSelectedServiceVehicleId] = useState("");
   const [historyVehicleId, setHistoryVehicleId] = useState("all");
+  const [overviewVehicleId, setOverviewVehicleId] = useState("");
   const [activeView, setActiveView] = useState<AppView>("profile");
   const [latestClaimLink, setLatestClaimLink] = useState("");
   const trackedOpenForUser = useRef<string | null>(null);
@@ -236,6 +237,7 @@ export function NyfromMvp() {
   const dealerServicesForVehicles = mapClaimedDealerRecordsToServices(claimedDealerRecords, allVehicles);
   const allServices = [...services, ...dealerServicesForVehicles]
     .sort((a, b) => b.service_date.localeCompare(a.service_date));
+  const overviewVehicle = allVehicles.find((vehicle) => vehicle.id === overviewVehicleId) ?? allVehicles[0] ?? null;
   const suggestedServiceDate = getSuggestedServiceDate(
     allServices,
     editingService?.vehicle_id ?? selectedServiceVehicleId,
@@ -858,7 +860,61 @@ export function NyfromMvp() {
       return;
     }
 
+    const selectedVehicle = allVehicles.find((vehicle) => vehicle.id === vehicleId);
+
+    if (selectedVehicle && isDealerVirtualVehicleId(vehicleId)) {
+      const createdVehicleId = await createVehicleFromImportedDealerVehicle(selectedVehicle, mileage, mileageUnit);
+
+      if (createdVehicleId) {
+        setOverviewVehicleId(createdVehicleId);
+        setHistoryVehicleId(createdVehicleId);
+      }
+      return;
+    }
+
     await updateVehicleMileage(vehicleId, mileage, mileageUnit);
+  }
+
+  async function createVehicleFromImportedDealerVehicle(vehicle: Vehicle, mileage: number | null, mileageUnit: "km" | "mi") {
+    if (!supabase || !user) {
+      return null;
+    }
+
+    const ownerName = getProfileName(profile) || user.email || "Sin nombre";
+    const { data, error } = await supabase
+      .from("vehicles")
+      .insert({
+        user_id: user.id,
+        owner_name: ownerName,
+        plate: vehicle.plate,
+        vin: vehicle.vin,
+        make: vehicle.make,
+        model_line: vehicle.model_line,
+        model_year: vehicle.model_year,
+        engine: vehicle.engine,
+        usage: vehicle.usage,
+        vehicle_type: vehicle.vehicle_type,
+        seats: vehicle.seats,
+        color: vehicle.color,
+        cylinders: vehicle.cylinders,
+        cc: vehicle.cc,
+        current_mileage: mileage ?? vehicle.current_mileage,
+        current_mileage_unit: mileageUnit,
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      setStatus(`No se pudo convertir el vehiculo importado: ${error.message}`);
+      return null;
+    }
+
+    setStatus("Vehiculo importado agregado a tu cuenta y kilometraje actualizado.");
+    void trackActivity("dealer_vehicle_imported", {
+      has_mileage: Boolean(mileage ?? vehicle.current_mileage),
+    });
+    await loadData();
+    return data.id as string;
   }
 
   async function completeUpcomingService(item: ReturnType<typeof getUpcomingServices>[number]) {
@@ -1067,7 +1123,7 @@ export function NyfromMvp() {
         </>
       ) : (
         <>
-      <MileageQuickUpdate vehicles={vehicles} onSubmit={saveVehicleMileage} />
+      <MileageQuickUpdate vehicles={allVehicles} onSubmit={saveVehicleMileage} />
 
       <section className="mb-5 grid gap-5 lg:grid-cols-[1fr_360px]">
         <VehicleOverview
@@ -1075,6 +1131,9 @@ export function NyfromMvp() {
           services={allServices}
           nextMonthCost={nextMonthCost}
           annualCost={annualCost}
+          selectedVehicle={overviewVehicle}
+          selectedVehicleId={overviewVehicle?.id ?? ""}
+          onSelectVehicle={setOverviewVehicleId}
         />
         <ProfileSummary profile={profile} userEmail={user.email ?? ""} dailyKm={dailyKm} onEdit={() => setActiveView("profile")} />
       </section>
@@ -1736,7 +1795,12 @@ function MileageQuickUpdate({
   onSubmit: (event: FormEvent<HTMLFormElement>, fallbackVehicleId?: string) => void;
 }) {
   const firstVehicle = vehicles[0];
-  const firstVehicleMileage = firstVehicle?.current_mileage ?? null;
+  const [selectedVehicleId, setSelectedVehicleId] = useState(firstVehicle?.id ?? "");
+  const effectiveSelectedVehicleId = vehicles.some((vehicle) => vehicle.id === selectedVehicleId)
+    ? selectedVehicleId
+    : firstVehicle?.id ?? "";
+  const selectedVehicle = vehicles.find((vehicle) => vehicle.id === effectiveSelectedVehicleId) ?? firstVehicle;
+  const selectedVehicleMileage = selectedVehicle?.current_mileage ?? null;
 
   if (!firstVehicle) {
     return null;
@@ -1749,14 +1813,15 @@ function MileageQuickUpdate({
           <p className="text-xs font-black uppercase text-red-200">Kilometraje actual</p>
           <h2 className="mt-1 text-2xl font-black text-white">Actualiza km o millas</h2>
           <p className="mt-2 text-sm font-bold text-red-100/80">
-            {formatMileageBothUnits(firstVehicleMileage)}
+            {formatMileageBothUnits(selectedVehicleMileage)}
           </p>
         </div>
         <div className="grid gap-3">
           <select
             className="min-h-14 rounded-lg border border-red-300/30 bg-black/35 px-4 text-base font-black text-white outline-none focus:border-red-200"
             name="vehicle_id"
-            defaultValue={firstVehicle.id}
+            value={effectiveSelectedVehicleId}
+            onChange={(event) => setSelectedVehicleId(event.currentTarget.value)}
           >
             {vehicles.map((vehicle) => (
               <option key={vehicle.id} value={vehicle.id}>
@@ -1765,9 +1830,10 @@ function MileageQuickUpdate({
             ))}
           </select>
           <select
+            key={selectedVehicle?.id ?? "mileage-unit"}
             className="min-h-14 rounded-lg border border-red-300/30 bg-black/35 px-4 text-base font-black text-white outline-none focus:border-red-200"
             name="current_mileage_unit"
-            defaultValue={firstVehicle.current_mileage_unit ?? "km"}
+            defaultValue={selectedVehicle?.current_mileage_unit ?? "km"}
           >
             <option value="km">Guardar desde kilometros</option>
             <option value="mi">Guardar desde millas</option>
@@ -1780,7 +1846,7 @@ function MileageQuickUpdate({
             type="number"
             min={0}
             step="any"
-            placeholder={firstVehicleMileage ? `${firstVehicleMileage.toLocaleString("es-GT")} km` : "Km"}
+            placeholder={selectedVehicleMileage ? `${selectedVehicleMileage.toLocaleString("es-GT")} km` : "Km"}
           />
           <input
             className="min-h-14 min-w-0 rounded-lg border border-red-300/30 bg-black/35 px-4 text-lg font-black text-white outline-none focus:border-red-200"
@@ -1788,7 +1854,7 @@ function MileageQuickUpdate({
             type="number"
             min={0}
             step="any"
-            placeholder={firstVehicleMileage ? `${kmToMiles(firstVehicleMileage).toLocaleString("es-GT", { maximumFractionDigits: 1 })} mi` : "Millas"}
+            placeholder={selectedVehicleMileage ? `${kmToMiles(selectedVehicleMileage).toLocaleString("es-GT", { maximumFractionDigits: 1 })} mi` : "Millas"}
           />
           <button className="min-h-14 rounded-lg bg-red-600 px-6 text-base font-black text-white shadow-lg shadow-red-950/30" type="submit">
             Actualizar
@@ -1849,13 +1915,19 @@ function VehicleOverview({
   services,
   nextMonthCost,
   annualCost,
+  selectedVehicle,
+  selectedVehicleId,
+  onSelectVehicle,
 }: {
   vehicles: Vehicle[];
   services: ServiceRecord[];
   nextMonthCost: number;
   annualCost: number;
+  selectedVehicle: Vehicle | null;
+  selectedVehicleId: string;
+  onSelectVehicle: (vehicleId: string) => void;
 }) {
-  const featuredVehicle = vehicles[0];
+  const featuredVehicle = selectedVehicle ?? vehicles[0];
   const featuredServices = featuredVehicle
     ? services.filter((service) => service.vehicle_id === featuredVehicle.id).length
     : 0;
@@ -1875,6 +1947,21 @@ function VehicleOverview({
       <div className="relative grid gap-6 p-8 lg:grid-cols-[1fr_340px]">
       <div className="min-w-0">
         <p className="mb-2 text-xs font-black uppercase text-red-300">Tus vehiculos</p>
+        {vehicles.length > 1 ? (
+          <div className="mb-4 max-w-xl">
+            <select
+              className="min-h-12 w-full rounded-lg border border-white/12 bg-black/25 px-4 font-black text-white outline-none focus:border-red-300"
+              value={selectedVehicleId || featuredVehicle?.id || ""}
+              onChange={(event) => onSelectVehicle(event.currentTarget.value)}
+            >
+              {vehicles.map((vehicle) => (
+                <option key={vehicle.id} value={vehicle.id}>
+                  {vehicleLabel(vehicle)}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <h1 className="flex max-w-3xl items-start gap-4 text-4xl font-black tracking-normal md:text-5xl">
           <VehicleSketchIcon />
           <span>{featuredVehicle ? vehicleLabel(featuredVehicle) : "Agrega tu primer vehiculo"}</span>
@@ -2624,10 +2711,7 @@ function getDealerVehicleOptions(records: DealerVehicleRecord[]) {
 
 function mapClaimedDealerRecordsToVehicles(records: DealerVehicleRecord[], existingVehicles: Vehicle[]): Vehicle[] {
   const existingKeys = new Set(
-    existingVehicles.flatMap((vehicle) => [
-      normalizeVehicleKey(vehicle.vin),
-      normalizeVehicleKey(vehicle.plate),
-    ]).filter(Boolean),
+    existingVehicles.flatMap((vehicle) => getVehicleMatchKeys(vehicle)).filter(Boolean),
   );
   const vehicles = new Map<string, Vehicle>();
 
@@ -2702,17 +2786,51 @@ function findVehicleForDealerRecord(record: DealerVehicleRecord, vehicles: Vehic
   const dealerVehicleId = getDealerVirtualVehicleId(getDealerRecordVehicleKey(record));
   const recordVin = normalizeVehicleKey(record.vin);
   const recordPlate = normalizeVehicleKey(record.plate);
+  const recordMake = normalizeVehicleKey(record.make);
+  const recordLine = normalizeVehicleKey(record.model_line);
+  const recordYear = record.model_year ? String(record.model_year) : "";
 
   return vehicles.find((vehicle) => (
     vehicle.id === dealerVehicleId
     ||
     (recordVin && normalizeVehicleKey(vehicle.vin) === recordVin)
-    || (recordPlate && normalizeVehicleKey(vehicle.plate) === recordPlate)
+    || (
+      recordPlate
+      && normalizeVehicleKey(vehicle.plate) === recordPlate
+      && (!recordMake || normalizeVehicleKey(vehicle.make) === recordMake)
+      && (!recordLine || normalizeVehicleKey(vehicle.model_line) === recordLine)
+      && (!recordYear || String(vehicle.model_year ?? "") === recordYear)
+    )
   ));
 }
 
 function getDealerRecordVehicleKey(record: DealerVehicleRecord) {
-  return normalizeVehicleKey(record.vin) || normalizeVehicleKey(record.plate) || `RECORD${record.id}`;
+  const vin = normalizeVehicleKey(record.vin);
+
+  if (vin) {
+    return vin;
+  }
+
+  const composite = [
+    record.make,
+    record.model_line,
+    record.model_year,
+    record.plate,
+  ].map((value) => normalizeVehicleKey(String(value ?? ""))).filter(Boolean).join("-");
+
+  return composite || `RECORD${record.id}`;
+}
+
+function getVehicleMatchKeys(vehicle: Vehicle) {
+  const vin = normalizeVehicleKey(vehicle.vin);
+  const composite = [
+    vehicle.make,
+    vehicle.model_line,
+    vehicle.model_year,
+    vehicle.plate,
+  ].map((value) => normalizeVehicleKey(String(value ?? ""))).filter(Boolean).join("-");
+
+  return [vin, composite || normalizeVehicleKey(vehicle.plate)].filter(Boolean);
 }
 
 function getDealerVirtualVehicleId(key: string) {
